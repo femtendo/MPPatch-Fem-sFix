@@ -9,7 +9,10 @@ I wanted an easier way to play multiplayer Civ 5 mods.
 This intends to be an all-in-one fork.
 My hope is that this fork encourages more Civ 5 modding!
 
-As far as I could tell, this tool's original repo was deprecated and wasn't touched since 2021. When I tried to spin up some Paper Mario civ leader mods, it simply did not install correctly. This fork intends to allign this project with current Steam release Civ 5, and make mods work in multiplayer effectively and easy again.
+As far as I could tell, this tool's original repo was deprecated and wasn't touched 
+since 2021. When I tried to spin up some Paper Mario civ leader mods, it simply did 
+not install correctly. This fork intends to allign this project with current Steam 
+release Civ 5, and make mods work in multiplayer effectively and eas.
 Implements pull #98 from the original repo and a few other fixes.
 
 Have fun~
