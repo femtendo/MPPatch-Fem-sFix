@@ -22,14 +22,70 @@
 # THE SOFTWARE.
 #
 
-scripts/python/make-win32-wrapper-asm.py \
-  src/patch/mppatch-core/target/i686-pc-windows-gnu/release/mppatch_core.dll \
-  >src/patch/mppatch-core/target/i686-pc-windows-gnu/release/mppatch_core_wrapper.s || exit 1
-nasm -f win32 \
-  src/patch/mppatch-core/target/i686-pc-windows-gnu/release/mppatch_core_wrapper.s \
-  -o src/patch/mppatch-core/target/i686-pc-windows-gnu/release/mppatch_core_wrapper.o || exit 1
-clang -target i686-pc-windows-gnu -shared \
-  src/patch/mppatch-core/target/i686-pc-windows-gnu/release/mppatch_core_wrapper.o \
-  src/patch/mppatch-core/target/i686-pc-windows-gnu/release/mppatch_core.dll \
-  -o src/patch/mppatch-core/target/i686-pc-windows-gnu/release/mppatch_core_wrapper.dll || exit 1
-strip src/patch/mppatch-core/target/i686-pc-windows-gnu/release/mppatch_core_wrapper.dll || exit 1
+CORE_DLL="$1"
+WRAPPER_DEF="$2"
+WRAPPER_DLL="$3"
+DIR=$(dirname "$CORE_DLL")
+
+if [ -z "$CORE_DLL" ] || [ -z "$WRAPPER_DEF" ] || [ -z "$WRAPPER_DLL" ]; then
+  echo "Usage: $0 <core_dll> <wrapper_def> <wrapper_dll>"
+  echo "  core_dll:     path to mppatch_core.dll"
+  echo "  wrapper_def:  output path for generated forwarder .def file"
+  echo "  wrapper_dll:  output path for generated wrapper dll"
+  exit 1
+fi
+
+prefix="mppatch_proxy_CvGameDatabase_"
+
+echo "=== Generating forwarder DEF from $CORE_DLL ==="
+
+# Extract exports from mppatch_core.dll using llvm-objdump
+# Filter for proxy functions, extract just the name
+
+cat > "$WRAPPER_DEF" << 'EXPORTS_HEADER'
+EXPORTS
+EXPORTS_HEADER
+
+# Use llvm-objdump to get the export table, extract function names with the proxy prefix
+# Output format after "Ordinal  RVA  Name" header:
+#       1 0x184044  mppatch_proxy_CvGameDatabase_0000
+#       2 0x18404c  mppatch_proxy_CvGameDatabase_0001
+llvm-objdump -p "$CORE_DLL" | awk '
+  /Ordinal[[:space:]]+RVA[[:space:]]+Name/ { p=1; next }
+  p && /^[[:space:]]*$/ { exit }
+  p { print $NF }
+' | while read -r name; do
+  case "$name" in
+    ${prefix}*)
+      short_name="${name#$prefix}"
+      echo "  \"$short_name\" = mppatch_core.$name" >> "$WRAPPER_DEF"
+      ;;
+  esac
+done
+
+count=$(grep -c "= mppatch_core\." "$WRAPPER_DEF" 2>/dev/null || echo 0)
+echo "Generated $count forwarder exports in $WRAPPER_DEF"
+
+echo "=== Building forwarder DLL ==="
+
+# Create a minimal stub source file
+STUB_C="${DIR}/stub.c"
+cat > "$STUB_C" << 'STUB_EOF'
+// Minimal stub required to produce a PE DLL with lld-link (MSVC mode)
+// lld-link requires at least one .obj input file even with /noentry
+int __stdcall DllMain(void* hinst, unsigned long reason, void* reserved) {
+    return 1;
+}
+STUB_EOF
+
+# Compile stub with clang-cl (MSVC COFF format)
+STUB_OBJ="${DIR}/stub.obj"
+clang-cl --target=i686-pc-windows-msvc -c -Fo:"$STUB_OBJ" "$STUB_C" || exit 1
+
+# Link with lld-link using the forwarder DEF
+lld-link /dll /out:"$WRAPPER_DLL" /machine:x86 /nodefaultlib /noentry "$STUB_OBJ" /def:"$WRAPPER_DEF" || exit 1
+
+echo "=== Stripping $WRAPPER_DLL ==="
+strip "$WRAPPER_DLL" || exit 1
+
+echo "=== Done: $WRAPPER_DLL ==="

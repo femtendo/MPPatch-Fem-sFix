@@ -124,7 +124,11 @@ object LuaUtils {
 
 sealed trait PlatformType {
   def shouldBuildNative(other: PlatformType) = (this, other) match {
-    case (PlatformType.Win32, PlatformType.Win32)                      => true
+    // TEMPORARY: Skip native builds on Windows. The native-bin directory already has
+    // pre-built DLLs from WSL. SBT's macro system eagerly evaluates .value calls even
+    // inside if/else blocks, so conditionals in buildDylibDir can't prevent native builds.
+    // Returning false here makes nativeVersion/luajitFiles tasks yield empty sequences.
+    case (PlatformType.Win32, PlatformType.Win32)                      => false
     case (PlatformType.Linux, PlatformType.Win32 | PlatformType.Linux) => true
     case _                                                             => false
   }

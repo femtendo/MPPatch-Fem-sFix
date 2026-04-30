@@ -28,7 +28,7 @@ echo "Extracting native tarballs..."
 rm -rfv target/native-bin || exit 1
 mkdir -vp target/native-bin || exit 1
 cd target/native-bin || exit 1
-  tar -xv -f ../../target/mppatch_ci_natives-linux.tar.gz
+  tar -xv -f ../../target/mppatch_ci_natives-linux.tar.gz || exit 1
 cd ../.. || exit 1
 
 echo "Cleaning up after previous scripts..."

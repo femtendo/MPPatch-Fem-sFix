@@ -45,12 +45,15 @@ object NativePatchBuild {
 
         // run Cargo
         val buildId = UUID.randomUUID()
+        val stubDir = baseDirectory.value / "src" / "patch" / "stub"
         runProcess(
           Seq("cargo", "build", "--target", rustTarget, "--release"),
           crateDir,
           Map(
             "MPPATCH_VERSION" -> version.value,
-            "MPPATCH_BUILDID" -> buildId.toString
+            "MPPATCH_BUILDID" -> buildId.toString,
+            "LUA_LIB_NAME"    -> "lua51_Win32",
+            "LUA_LIB"         -> stubDir.getAbsolutePath
           )
         )
 
@@ -61,9 +64,43 @@ object NativePatchBuild {
     Keys.win32Wrapper := {
       if (PlatformType.currentPlatform.shouldBuildNative(PlatformType.Win32)) {
         val __ = Keys.nativeVersions.value // make an artifical dependency
-        runProcess(Seq("scripts/ci/build-win32-wrapper.sh"))
-        val coreDir = baseDirectory.value / "src" / "patch" / "mppatch-core";
-        Some(coreDir / "target" / "i686-pc-windows-gnu" / "release" / "mppatch_core_wrapper.dll")
+        val coreDir = baseDirectory.value / "src" / "patch" / "mppatch-core"
+        val targetDir = coreDir / "target" / "i686-pc-windows-gnu" / "release"
+        val coreDll   = targetDir / "mppatch_core.dll"
+        val wrapperDef = targetDir / "mppatch_core_wrapper_forwarder.def"
+        val wrapperDll = targetDir / "mppatch_core_wrapper.dll"
+        // Use Python script (works on both Windows and Linux) instead of bash
+        runProcess(Seq("python3", "scripts/python/build-win32-wrapper.py",
+          coreDll.getAbsolutePath, wrapperDef.getAbsolutePath, wrapperDll.getAbsolutePath))
+        Some(wrapperDll)
+      } else None
+    },
+    Keys.lua51Forwarder := {
+      if (PlatformType.currentPlatform.shouldBuildNative(PlatformType.Win32)) {
+        val __ = Keys.nativeVersions.value // ensure native build has run
+        val luajitFiles = LuaJITBuild.Keys.luajitFiles.value
+        luajitFiles.find(_.platform == PlatformType.Win32) match {
+          case None =>
+            streams.value.log.warn("No Win32 LuaJIT build available; skipping lua51 forwarder.")
+            None
+          case Some(luajitPatch) =>
+            val luajitDll = luajitPatch.file
+            val targetDir = luajitDll.getParentFile
+            val defFile = targetDir / "lua51_forwarder.def"
+            val forwarderDll = targetDir / "lua51.dll"
+
+            runProcess(Seq("python3", "scripts/python/build-lua51-forwarder.py",
+              luajitDll.getAbsolutePath, defFile.getAbsolutePath, forwarderDll.getAbsolutePath))
+
+            // Clean up temporary build artifacts
+            val stubObj = targetDir / "stub.obj"
+            val stubC   = targetDir / "stub.c"
+            if (stubObj.exists) stubObj.delete()
+            if (stubC.exists) stubC.delete()
+            if (defFile.exists) defFile.delete()
+
+            Some(forwarderDll)
+        }
       } else None
     }
   )
@@ -72,5 +109,6 @@ object NativePatchBuild {
   object Keys {
     val nativeVersions = TaskKey[Seq[PatchFile]]("mppatch-native-versions")
     val win32Wrapper   = TaskKey[Option[File]]("mppatch-native-win32-wrapper")
+    val lua51Forwarder = TaskKey[Option[File]]("mppatch-lua51-forwarder")
   }
 }

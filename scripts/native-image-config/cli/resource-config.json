@@ -1,0 +1,15 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": "\\QMETA-INF/services/javax.xml.parsers.SAXParserFactory\\E"
+      },
+      {
+        "pattern": "\\QMETA-INF/services/java.util.prefs.PreferencesFactory\\E"
+      },
+      {
+        "pattern": "moe/lymia/mppatch/.*"
+      }
+    ]
+  }
+}

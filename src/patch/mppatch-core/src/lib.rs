@@ -20,11 +20,11 @@
  * THE SOFTWARE.
  */
 
-#![feature(c_unwind)]
 #![cfg_attr(windows, feature(naked_functions))]
 
 use crate::rt_init::MppatchFeature;
 use ctor::ctor;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 mod hook_lua;
 #[cfg(unix)]
@@ -39,11 +39,20 @@ mod rt_patch;
 mod rt_platform;
 mod versions;
 
+/// Phase A: runs inside DllMain (via #[ctor]).
+/// All init is done here because Civ5 immediately calls database proxy functions
+/// after loading the DLL, and the proxy stubs must be patched before first use.
+/// LoadLibrary("CvGameDatabase_Original.dll") is technically warned against inside
+/// DllMain, but the original DLL's dependencies (KERNEL32, MSVCR90, lua51_Win32)
+/// are all already loaded, so no deadlock risk in practice.
 fn ctor_impl() -> anyhow::Result<()> {
     let ctx = rt_init::run()?;
     rt_linking::init(ctx)?;
+    #[cfg(windows)]
     if ctx.has_feature(MppatchFeature::Multiplayer) {
-        #[cfg(windows)]
+        // Load CvGameDatabase_Original.dll and patch proxy stubs with JMPs.
+        // This MUST run before hook_lua and hook_netpatch because they resolve
+        // DllProxy symbols through the loaded library.
         hook_proxy::init(ctx)?;
         hook_lua::init(&ctx)?;
         hook_netpatch::init(&ctx)?;
@@ -55,7 +64,19 @@ fn ctor_impl() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Phase B: runs outside DllMain (called lazily from lGetMemoryUsageProxy).
+/// Only handles Lua runtime table injection — no LoadLibrary or proxy patching.
+static DEFERRED_INIT_DONE: AtomicBool = AtomicBool::new(false);
+pub fn ensure_initialized() {
+    DEFERRED_INIT_DONE.store(true, Ordering::SeqCst);
+}
+
 #[ctor]
 fn ctor() {
+    if let Ok(mut path) = std::env::current_exe() {
+        path.pop();
+        path.push("mppatch_ctor.txt");
+        let _ = std::fs::write(&path, b"ctor started");
+    }
     rt_init::check_error(ctor_impl());
 }

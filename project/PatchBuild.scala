@@ -32,23 +32,33 @@ object PatchBuild {
     Keys.buildDylibDir := {
       // create the native-patch directory
       val dir = Keys.nativesDir.value
-      IO.delete(dir)
-      IO.createDirectory(dir)
-
-      // copy native-patch files to the directory
       val log = streams.value.log
-      for (luajitBin <- LuaJITBuild.Keys.luajitFiles.value) {
-        log.log(Level.Info, s"Copying $luajitBin to output directory.")
-        IO.copyFile(luajitBin.file, dir / luajitBin.file.getName)
-      }
-      for (nativeBin <- NativePatchBuild.Keys.nativeVersions.value) {
-        log.log(Level.Info, s"Copying $nativeBin to output directory.")
-        IO.copyFile(nativeBin.file, dir / nativeBin.name)
-        IO.write(dir / s"${nativeBin.name}.build-id", nativeBin.buildId)
-      }
-      for (wrapperBin <- NativePatchBuild.Keys.win32Wrapper.value) {
-        log.log(Level.Info, s"Copying $wrapperBin to output directory.")
-        IO.copyFile(wrapperBin, dir / wrapperBin.getName)
+
+      // If native-bin already has files (e.g., pre-extracted from CI tarball), skip rebuilding
+      if (dir.exists && dir.listFiles().nonEmpty) {
+        log.log(Level.Info, s"Native binaries already present in $dir, skipping build.")
+      } else {
+        IO.delete(dir)
+        IO.createDirectory(dir)
+
+        // copy native-patch files to the directory
+        for (luajitBin <- LuaJITBuild.Keys.luajitFiles.value) {
+          log.log(Level.Info, s"Copying $luajitBin to output directory.")
+          IO.copyFile(luajitBin.file, dir / luajitBin.file.getName)
+        }
+        for (nativeBin <- NativePatchBuild.Keys.nativeVersions.value) {
+          log.log(Level.Info, s"Copying $nativeBin to output directory.")
+          IO.copyFile(nativeBin.file, dir / nativeBin.name)
+          IO.write(dir / s"${nativeBin.name}.build-id", nativeBin.buildId)
+        }
+        for (wrapperBin <- NativePatchBuild.Keys.win32Wrapper.value) {
+          log.log(Level.Info, s"Copying $wrapperBin to output directory.")
+          IO.copyFile(wrapperBin, dir / wrapperBin.getName)
+        }
+        for (lua51Bin <- NativePatchBuild.Keys.lua51Forwarder.value) {
+          log.log(Level.Info, s"Copying $lua51Bin to output directory.")
+          IO.copyFile(lua51Bin, dir / lua51Bin.getName)
+        }
       }
 
       // return directory
@@ -56,6 +66,9 @@ object PatchBuild {
     },
     Keys.patchFiles := {
       val log = streams.value.log
+
+      // Ensure native binaries are built/populated before reading them
+      val _ = Keys.buildDylibDir.value
 
       def loadFromDir(dir: File) =
         Path.allSubpaths(dir).filter(_._1.isFile).map(x => PatchFile(x._2, IO.readBytes(x._1))).toSeq
@@ -73,13 +86,14 @@ object PatchBuild {
         .map(x => s"_mpPatch.version.info[${LuaUtils.quote(x._1)}] = ${LuaUtils.quote(x._2)}")
         .mkString("\n")
       val buildIdInfo = nativeDirFiles
-        .filter(x => x.getName.endsWith(".build-id"))
-        .sorted
+        .toSeq.sortBy(_.getName)
+        .filter(_.getName.endsWith(".build-id"))
         .map { x =>
           val platform = x.getName match {
             case "mppatch_core.dll.build-id"   => "win32"
             case "mppatch_core.dylib.build-id" => "macos"
             case "mppatch_core.so.build-id"    => "linux"
+            case other                         => other.stripSuffix(".build-id")
           }
           s"_mpPatch.version.buildId[${LuaUtils.quote(platform)}] = ${LuaUtils.quote(IO.read(x))}"
         }

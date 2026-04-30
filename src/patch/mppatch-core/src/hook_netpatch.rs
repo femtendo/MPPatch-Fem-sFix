@@ -39,8 +39,17 @@ use std::{
     sync::Mutex,
 };
 
-#[cfg(windows)]
+#[cfg(all(windows, target_env = "msvc"))]
 type FnType = unsafe extern "thiscall-unwind" fn(
+    *mut c_void,
+    *mut CppListRaw<Guid>,
+    *mut CppListRaw<ModInfo>,
+    bool,
+    bool,
+) -> c_int;
+
+#[cfg(all(windows, target_env = "gnu"))]
+type FnType = unsafe extern "thiscall" fn(
     *mut c_void,
     *mut CppListRaw<Guid>,
     *mut CppListRaw<ModInfo>,
@@ -128,8 +137,30 @@ pub enum OverrideType {
     ForceReloadMods,
 }
 
-pub fn add_dlc(_str: &str) {
-    unimplemented!("add_guid")
+pub fn add_dlc(str: &str) {
+    fn parse(str: &str) -> Option<Guid> {
+        let mut parts = str.splitn(5, '-');
+        let p1 = parts.next()?;
+        let p2 = parts.next()?;
+        let p3 = parts.next()?;
+        let p4 = parts.next()?;
+        let p5 = parts.next()?;
+        if p5.len() != 12 {
+            return None;
+        }
+        let data1 = u32::from_str_radix(p1, 16).ok()?;
+        let data2 = u16::from_str_radix(p2, 16).ok()?;
+        let data3 = u16::from_str_radix(p3, 16).ok()?;
+        let g4 = u64::from_str_radix(p4, 16).ok()?;
+        let g5_hi = u64::from_str_radix(&p5[..4], 16).ok()?;
+        let g5_lo = u64::from_str_radix(&p5[4..], 16).ok()?;
+        let data4 = (g4 << 48) | (g5_hi << 32) | g5_lo;
+        Some(Guid { data1, data2, data3, data4 })
+    }
+    match parse(str) {
+        Some(guid) => STATE.lock().unwrap().dlc_list.push(guid),
+        None => log::error!("Invalid GUID format passed to pushDLC: {str}"),
+    }
 }
 pub fn add_mod(mod_id: &str, version: i32) {
     let mut info = ModInfo { mod_id: [0; 64], version };
@@ -244,8 +275,19 @@ unsafe fn SetActiveDLCAndModsProxy_impl(
     result
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, target_env = "msvc"))]
 pub unsafe extern "thiscall-unwind" fn SetActiveDLCAndModsProxy(
+    this: *mut c_void,
+    dlc_list: *mut CppListRaw<Guid>,
+    mod_list: *mut CppListRaw<ModInfo>,
+    reload_dlc: bool,
+    reload_mods: bool,
+) -> c_int {
+    SetActiveDLCAndModsProxy_impl(this, dlc_list, mod_list, reload_dlc, reload_mods)
+}
+
+#[cfg(all(windows, target_env = "gnu"))]
+pub unsafe extern "thiscall" fn SetActiveDLCAndModsProxy(
     this: *mut c_void,
     dlc_list: *mut CppListRaw<Guid>,
     mod_list: *mut CppListRaw<ModInfo>,

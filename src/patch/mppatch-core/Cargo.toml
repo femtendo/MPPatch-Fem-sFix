@@ -9,7 +9,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-anyhow = "1.0"
+anyhow = { version = "1.0", features = ["backtrace"] }
 atomic = "0.6"
 bytemuck = { version = "1.14", features = ["derive"] }
 ctor = "0.2"
@@ -20,10 +20,11 @@ log = { version = "0.4", features = ["std"] }
 mlua = { version = "0.9", features = ["lua51", "module"] }
 serde = { version = "1.0", features = ["derive"] }
 simplelog = { version = "0.12", features = ["paris"] }
+time = "0.3"
 toml = { version = "0.8", default-features = false, features = ["parse"] }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["memoryapi", "libloaderapi"] }
+winapi = { version = "0.3", features = ["memoryapi", "libloaderapi", "winuser"] }
 
 [build-dependencies]
 nasm-rs = "0.2"
@@ -33,6 +34,6 @@ panic = "abort"
 
 [profile.release]
 opt-level = 2
-lto = true
+lto = false
 debug = "line-tables-only"
 panic = "abort"

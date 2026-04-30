@@ -59,20 +59,11 @@ end
 createTable()
 _mpPatch.patch = patch
 
--- Check the version information to make sure nothing has gone wrong
-do
-    include "mppatch_version.lua"
-    if not _mpPatch.version or not _mpPatch.version.loaded then
-        loadFailed("Could not load version information.")
-        return
-    end
-    local expectedBuildId = _mpPatch.version.buildId[patch.version.platform]
-    if not expectedBuildId or expectedBuildId ~= patch.version.buildId then
-        expectedBuildId = tostring(expectedBuildId)
-        local format = "BuildID mismatch. (platform: %s, got: %s, expected: %s)"
-        loadFailed(format:format(patch.version.platform, patch.version.buildId, expectedBuildId))
-        return
-    end
+-- Version validation is done by the binary layer at init time
+-- (find_info in versions.rs already matched the SHA-256)
+if not patch.version.valid then
+    loadFailed("Binary version validation failed.", "binaryVersionInvalid")
+    return
 end
 
 -- Load the actual _mpPatch runtime contents

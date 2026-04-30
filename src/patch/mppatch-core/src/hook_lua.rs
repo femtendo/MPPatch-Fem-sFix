@@ -112,6 +112,7 @@ fn create_mppatch_table(lua_c: *mut lua_State, lua: &Lua) -> Result<()> {
         version_table.set("platform", ctx.version_info.platform.name())?;
         version_table.set("sha256", ctx.sha256())?;
         version_table.set("buildId", ctx.build_id())?;
+        version_table.set("valid", true)?;
         patch_table.set("version", version_table)?;
     }
 
@@ -228,6 +229,11 @@ unsafe extern "C-unwind" fn get_globals_table(lua_c: *mut lua_State) -> c_int {
 }
 
 pub unsafe extern "C-unwind" fn lGetMemoryUsageProxy(lua_c: *mut lua_State) -> c_int {
+    // Phase B deferred init: load CvGameDatabase_Original.dll outside DllMain context.
+    // This is safe because lGetMemoryUsageProxy is called during normal game execution,
+    // well after DllMain has returned. The AtomicBool guard prevents re-entrancy.
+    crate::ensure_initialized();
+
     if lua_type(lua_c, 1) == LUA_TSTRING
         && CStr::from_ptr(luaL_checkstring(lua_c, 1)).to_string_lossy() == LUA_SENTINEL
     {

@@ -49,7 +49,7 @@ git.formattedShaVersion := {
 
 // Scala configuration
 scalaVersion := "3.3.1"
-scalacOptions ++= "-release:21 -deprecation -unchecked".split(" ").toSeq
+scalacOptions ++= "-release:17 -deprecation -unchecked".split(" ").toSeq
 crossPaths := false
 
 // Dependencies
@@ -89,6 +89,9 @@ Global / excludeLintKeys += nativeImageVersion
 Global / excludeLintKeys += NativeImage / name
 
 InputKey[Unit]("buildNative") := PatchBuild.Keys.buildDylibDir.value
+
+// CLI entry point alias
+addCommandAlias("cli", "runMain moe.lymia.mppatch.cli.MPPatchCLI")
 
 // Runtime configuration
 run / fork    := true

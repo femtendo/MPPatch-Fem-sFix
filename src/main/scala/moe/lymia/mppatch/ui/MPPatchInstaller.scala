@@ -135,11 +135,13 @@ object MPPatchInstaller extends LaunchFrameError {
       log.logRaw("")
 
       // install look-and-feel
+      log.info("[DIAG] Installing FlatLaf look-and-feel...")
       FlatRobotoFont.install()
       FlatLaf.setPreferredFontFamily(FlatRobotoFont.FAMILY)
       FlatLaf.setPreferredLightFontFamily(FlatRobotoFont.FAMILY_LIGHT)
       FlatLaf.setPreferredSemiboldFontFamily(FlatRobotoFont.FAMILY_SEMIBOLD)
       FlatIntelliJLaf.setup()
+      log.info("[DIAG] FlatLaf initialized successfully")
 
       // check command line arguments
       val checkUuid = "9e3c6db9-2a2f-4a22-9eb5-fba1a710449c"
@@ -151,8 +153,14 @@ object MPPatchInstaller extends LaunchFrameError {
         NativeImageGenConfig.run()
       } else if (!isSbt) {
         // start main frame
+        log.info("[DIAG] Calling ConfigurationStore.updatePreferences...")
         ConfigurationStore.updatePreferences(defaultCivilizationPath)
-        new LegacyMainFrame(locale).showForm()
+        log.info("[DIAG] ConfigurationStore initialized successfully")
+        log.info("[DIAG] Creating LegacyMainFrame instance...")
+        val mainFrame = new LegacyMainFrame(locale)
+        log.info("[DIAG] LegacyMainFrame constructed, calling showForm...")
+        mainFrame.showForm()
+        log.info("[DIAG] showForm completed")
       } else {
         // start development main frame
         log.warn("Launching development installer version!")
@@ -160,12 +168,20 @@ object MPPatchInstaller extends LaunchFrameError {
         if (args.length == 1 && args(0) == "--new") new MainFrame(locale).showForm()
         else new LegacyMainFrame(locale).showForm()
       }
+      log.info("[DIAG] main() completed normally")
     } catch {
       case _: InstallerException => // ignored
-      case e: Exception =>
-        try reportException("error.genericerror", e)
-        catch {
-          case _: InstallerException => // ignored
+      case e: Throwable =>
+        log.error(s"[DIAG] Uncaught throwable in main: ${e.getClass.getName}: ${e.getMessage}")
+        try {
+          log.logRaw("[DIAG] Stack trace:")
+          e.getStackTrace.foreach(ste => log.logRaw(s"  at ${ste.getClassName}.${ste.getMethodName}(${ste.getFileName}:${ste.getLineNumber})"))
+          // Also print to stderr as fallback
+          System.err.println(s"[DIAG FATAL] ${e.getClass.getName}: ${e.getMessage}")
+          e.printStackTrace(System.err)
+        } catch {
+          case _: Exception =>
+          case _: Throwable =>
         }
     }
 

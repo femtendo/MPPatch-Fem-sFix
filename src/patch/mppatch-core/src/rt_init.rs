@@ -124,19 +124,22 @@ fn setup_logging(ctx: &MppatchCtx) {
         ColorChoice::Auto,
     ));
     if ctx.has_feature(MppatchFeature::Logging) {
-        loggers.push(WriteLogger::new(
-            LevelFilter::Trace,
-            ConfigBuilder::default()
-                .set_thread_level(LevelFilter::Error)
-                .set_thread_mode(ThreadLogMode::Both)
-                .set_target_level(LevelFilter::Off)
-                .set_location_level(LevelFilter::Error)
-                .set_time_format_rfc2822()
-                .build(),
-            File::create(log_file).expect("Cannot open log file."),
-        ));
+        match File::create(&log_file) {
+            Ok(file) => loggers.push(WriteLogger::new(
+                LevelFilter::Trace,
+                ConfigBuilder::default()
+                    .set_thread_level(LevelFilter::Error)
+                    .set_thread_mode(ThreadLogMode::Both)
+                    .set_target_level(LevelFilter::Off)
+                    .set_location_level(LevelFilter::Error)
+                    .set_time_format_rfc2822()
+                    .build(),
+                file,
+            )),
+            Err(e) => eprintln!("mppatch: Cannot open log file {log_file:?}: {e}"),
+        }
     }
-    CombinedLogger::init(loggers).unwrap();
+    let _ = CombinedLogger::init(loggers);
 }
 
 static CTX: AtomicPtr<MppatchCtx> = AtomicPtr::new(null_mut());
@@ -197,7 +200,8 @@ pub fn check_error<T>(err: Result<T>) -> T {
         Ok(v) => v,
         Err(e) => {
             error!("Error occurred: {e}");
-            dump_backtrace(e.backtrace());
+            let bt = e.backtrace();
+            error!("Backtrace: {bt}");
             fatal_error(&format!("Internal error: {e}"));
         }
     }
@@ -222,7 +226,19 @@ fn dump_backtrace(backtrace: &Backtrace) {
     }
 }
 
+#[cfg(windows)]
+fn fatal_error(msg: &str) -> ! {
+    let _ = std::fs::write("mppatch_fatal_error.txt", msg.as_bytes());
+    unsafe {
+        use winapi::um::winuser::{MessageBoxW, MB_ICONERROR, MB_OK};
+        let title: Vec<u16> = "MPPatch Error\0".encode_utf16().collect();
+        let text: Vec<u16> = format!("MPPatch fatal error:\n{}\0", msg).encode_utf16().collect();
+        MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR);
+    }
+    std::process::abort()
+}
+
+#[cfg(not(windows))]
 fn fatal_error(_: &str) -> ! {
-    // TODO: Show a msgbox
     std::process::abort()
 }

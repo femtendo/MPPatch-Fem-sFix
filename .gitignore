@@ -1,10 +1,54 @@
 /.idea
 /.bsp
 /*.iml
-
+/.roo
+/.github
+/.claude
+CLAUDE.md
+AGENTS.md
 /out
 /target
+/build-tools
+civver.md
+currentDLL
 
 /mppatch_*
 
 /install.ps1 # Github actions
+
+# Investigation and planning documents (not part of codebase)
+/findings.txt
+/updateplan.md
+/build_error.txt
+/build_output.txt
+
+# Root-level test artifacts from development/debugging sessions
+/test_*
+
+# Rust intermediate COFF objects and stray test sources in the crate tree
+*.rcgu.o
+src/patch/mppatch-core/test_*.rs
+
+# === AI / Agent artifacts ===
+.claude-flow/
+.mcp.json
+diagnostic_plan.md
+plans/
+
+# === Compiled build artifacts and generated outputs ===
+/build/
+META-INF/
+
+# === Runtime logs ===
+mppatch_installer.log
+
+# === Ad-hoc development documents ===
+test.md
+check_quotes.ps1
+
+# === Stray test sources in Rust crate (non-.rs) ===
+src/patch/mppatch-core/test_load_chain.c
+
+# === One-time GraalVM tracing agent scripts (not useful for fork) ===
+scripts/run-agent-*.sh
+scripts/run-agent-*.ps1

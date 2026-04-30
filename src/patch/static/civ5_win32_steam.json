@@ -18,7 +18,8 @@
       ],
       "writeFile": [
         {"from": "native/mppatch_core_wrapper.dll", "to": "CvGameDatabaseWin32Final Release.dll"},
-        {"from": "native/mppatch_core.dll", "to": "mppatch_core.dll"}
+        {"from": "native/mppatch_core.dll", "to": "mppatch_core.dll"},
+        {"from": "native/lua51.dll", "to": "lua51.dll"}
       ],
       "writeConfig": [
         "mppatch_config.toml"
@@ -54,8 +55,8 @@
       "lua51_Win32.dll.bak",
       "CvGameDatabase_Original.dll",
       "mppatch_config.ini",
-      "steamassets/assets/DLC/MPPatch",
-      "steamassets/assets/Gameplay/XML/NewText/MPPatch_TextData"
+      "Assets/DLC/MPPatch",
+      "Assets/Gameplay/XML/NewText/MPPatch_TextData"
     ]
   }
 }

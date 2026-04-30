@@ -208,14 +208,15 @@ pub fn init(_: &MppatchCtx) -> Result<()> {
         "Civ5XP" => BinaryType::Posix,
         "Civ5XP.orig" => BinaryType::Posix,
         exe_name => {
+            log::warn!("Unknown exe name: {exe_name}, defaulting to DX9 on Windows / Posix on Unix");
+            #[cfg(windows)]
+            {
+                BinaryType::Dx9
+            }
             #[cfg(unix)]
             {
-                log::warn!("Unknown exe name: {exe_name}");
                 BinaryType::Posix
             }
-
-            #[cfg(windows)]
-            bail!("Unknown exe name: {exe_name}")
         }
     };
     BINARY_TYPE.store(ty, Ordering::Relaxed);

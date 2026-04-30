@@ -1,0 +1,133 @@
+[
+  {
+    "name": "[B"
+  },
+  {
+    "name": "[C"
+  },
+  {
+    "name": "[Ljava.lang.String;"
+  },
+  {
+    "name": "java.lang.Boolean",
+    "methods": [
+      {
+        "name": "getBoolean",
+        "parameterTypes": ["java.lang.String"]
+      }
+    ]
+  },
+  {
+    "name": "java.lang.String",
+    "methods": [
+      {
+        "name": "toLowerCase",
+        "parameterTypes": ["java.util.Locale"]
+      }
+    ]
+  },
+  {
+    "name": "java.lang.System",
+    "methods": [
+      {
+        "name": "getProperty",
+        "parameterTypes": ["java.lang.String"]
+      }
+    ]
+  },
+  {
+    "name": "java.util.HashSet",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  },
+  {
+    "name": "java.util.HashMap",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      },
+      {
+        "name": "put",
+        "parameterTypes": ["java.lang.Object", "java.lang.Object"]
+      }
+    ]
+  },
+  {
+    "name": "java.util.ArrayList",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": ["int"]
+      },
+      {
+        "name": "add",
+        "parameterTypes": ["java.lang.Object"]
+      }
+    ]
+  },
+  {
+    "name": "scala.Some"
+  },
+  {
+    "name": "scala.None$"
+  },
+  {
+    "name": "scala.collection.immutable.Set$EmptySet$"
+  },
+  {
+    "name": "scala.collection.immutable.Map$EmptyMap$"
+  },
+  {
+    "name": "play.api.libs.json.JsString",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": ["java.lang.String"]
+      }
+    ]
+  },
+  {
+    "name": "play.api.libs.json.JsObject",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": ["scala.collection.immutable.Map"]
+      }
+    ]
+  },
+  {
+    "name": "play.api.libs.json.JsArray",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": ["scala.collection.immutable.Seq"]
+      }
+    ]
+  },
+  {
+    "name": "play.api.libs.json.JsNumber",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": ["java.math.BigDecimal"]
+      }
+    ]
+  },
+  {
+    "name": "play.api.libs.json.JsBoolean",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": ["boolean"]
+      }
+    ]
+  },
+  {
+    "name": "play.api.libs.json.JsNull$"
+  }
+]
