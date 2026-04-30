@@ -27,7 +27,11 @@ local success, error = pcall(function()
     elseif not _mpPatch.loaded then
         versionString = Locale.Lookup("TXT_KEY_MPPATCH_UNKNOWN_FAILURE")
     else
-        versionString = "MpPatch v".._mpPatch.versionString
+        local displayVer = _mpPatch.versionString
+        if displayVer == "<unknown>" or displayVer == "unknown" then
+            displayVer = (_mpPatch.version.info["mppatch.version.string"] or "unknown") .. "(femsfix)"
+        end
+        versionString = "MpPatch v"..displayVer
     end
     Controls.VersionNumber:SetText(Controls.VersionNumber:GetText().." -- "..versionString)
 end)

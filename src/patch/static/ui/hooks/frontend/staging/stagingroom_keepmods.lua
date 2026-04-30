@@ -21,7 +21,24 @@
 if _mpPatch_activateFrontEnd then
     _mpPatch.setBIsModding()
 
+    -- Save original Modding.ActivateDLC in this Lua state too (content switch
+    -- may have occurred since patch_14 saved it). The C function binding is
+    -- recreated in each new Lua state by the engine, so we need the reference
+    -- from THIS state to ensure it's valid.
+    _mpPatch._origActivateDLC = Modding.ActivateDLC
+
     Matchmaking = _mpPatch.hookTable(Matchmaking, {LaunchMultiplayerGame = function(...)
+        -- Confirm mod state for the game session BEFORE launch.
+        -- Calls the original C++ Modding::ActivateDLC() which calls
+        -- SetActiveDLCAndMods(mods, dlcs, false, false) — no reload flags,
+        -- so no content switch. This tells the engine "these mods are
+        -- confirmed for this session" so modded civs load correctly.
+        --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [LaunchMultiplayerGame] calling origActivateDLC to confirm mod state")
+        if _mpPatch._origActivateDLC then
+            _mpPatch._origActivateDLC()
+        else
+            _mpPatch.debugPrint("DIAG: [LaunchMultiplayerGame] WARNING: _origActivateDLC not available!")
+        end
         _mpPatch.overrideModsFromPreGame()
         return Matchmaking._super.LaunchMultiplayerGame(...)
     end})

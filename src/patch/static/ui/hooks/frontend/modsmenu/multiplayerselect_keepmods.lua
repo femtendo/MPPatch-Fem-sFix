@@ -18,25 +18,47 @@
 -- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 -- THE SOFTWARE.
 
-if _mpPatch and _mpPatch.loaded and ContextPtr:GetID() == "ModMultiplayerSelectScreen" then
+-- Hook global tables (Modding.ActivateDLC, PreGame.ResetGameOptions)
+-- These persist within the Lua state across screen changes.
+-- They are re-applied after each content switch when the file is reloaded.
+if _mpPatch and _mpPatch.loaded then
+    -- Save the ORIGINAL C ActivateDLC before hookTable wraps Modding.
+    -- Used by stagingroom_keepmods.lua to confirm mod state at game launch.
+    --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [ActivateDLC] Saving original Modding.ActivateDLC")
+    _mpPatch._origActivateDLC = Modding.ActivateDLC
+
     Modding = _mpPatch.hookTable(Modding, {
         ActivateDLC = function(...)
-            -- Check the Rust-side guard to avoid re-entry loops:
-            -- if an override+reload is already in progress from a previous
-            -- ActivateDLC call, skip the override and let the game proceed.
-            if not _mpPatch.patch.NetPatch.isOverridePending() then
-                _mpPatch.overrideModsFromActivatedList()
-                _mpPatch.patch.NetPatch.overrideReloadMods(true)
-                _mpPatch.patch.NetPatch.setOverridePending(true)
+            if _mpPatch.patch.NetPatch.isOverridePending() then
+                -- overridePending=true: proxy already injected mods.
+                -- The original C ActivateDLC calls SetActiveDLCAndMods
+                -- internally with reload flags, which would trigger a
+                -- content switch → bounce. Skip to preserve the guard.
+                --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [ActivateDLC] overridePending=true, SKIP (bounce guard)")
+                return
             end
+            --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [ActivateDLC] overridePending=false, doing mod override")
+            --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [ActivateDLC] ContextPtr:GetID() = " .. (ContextPtr:GetID() or "nil"))
+            _mpPatch.overrideModsFromActivatedList()
+            _mpPatch.patch.NetPatch.overrideReloadMods(true)
+            _mpPatch.patch.NetPatch.setOverridePending(true)
             Modding._super.ActivateDLC(...)
         end
     })
     PreGame = _mpPatch.hookTable(PreGame, {
         ResetGameOptions = function(...)
+            --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [ResetGameOptions] called")
+            --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [ResetGameOptions] ContextPtr:GetID() = " .. (ContextPtr:GetID() or "nil"))
             PreGame._super.ResetGameOptions(...)
             PreGame.SetPersistSettings(false)
-            _mpPatch.enrollModsList(Modding.GetActivatedMods())
+            local mods = Modding.GetActivatedMods()
+            --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [ResetGameOptions] GetActivatedMods returned " .. (#mods or 0) .. " mods")
+            if mods and #mods > 0 then
+                for i, m in ipairs(mods) do
+                    --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [ResetGameOptions]   mod[" .. i .. "] = " .. (m.ID or "?") .. " v" .. (m.Version or 0))
+                end
+            end
+            _mpPatch.enrollModsList(mods)
         end
     })
 end

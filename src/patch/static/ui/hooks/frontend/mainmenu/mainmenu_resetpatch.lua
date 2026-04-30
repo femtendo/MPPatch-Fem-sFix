@@ -21,8 +21,13 @@
 if _mpPatch and _mpPatch.loaded then
     local IsHotLoad = ContextPtr.IsHotLoad
     _mpPatch.patch.globals.rawset(ContextPtr, "IsHotLoad", function(...)
-        _mpPatch.debugPrint("Resetting NetPatch (just in case)")
+        local wasPending = _mpPatch.patch.NetPatch.isOverridePending()
+        _mpPatch.debugPrint("Resetting NetPatch (just in case), wasOverridePending = " .. tostring(wasPending))
         _mpPatch.patch.NetPatch.reset()
+        if wasPending then
+            _mpPatch.debugPrint("Restoring overridePending flag to preserve guard")
+            _mpPatch.patch.NetPatch.setOverridePending(true)
+        end
         return IsHotLoad(...)
     end)
 end

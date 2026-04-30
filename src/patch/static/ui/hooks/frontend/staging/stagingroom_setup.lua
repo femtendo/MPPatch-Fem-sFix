@@ -19,17 +19,29 @@
 -- THE SOFTWARE.
 
 if _mpPatch_activateFrontEnd then
-    _mpPatch.hooks.protocol_chathandler_setupHooks()
+    --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [StagingRoomSetup] block ENTERED")
 
-    Events.GameMessageChat.Remove(OnChat)
-    OnChat = _mpPatch.hooks.protocol_chathandler_new(OnChat, function(fromPlayer)
-        return not not m_PlayerNames[fromPlayer]
+    local ok, err = pcall(function()
+        _mpPatch.hooks.protocol_chathandler_setupHooks()
+        --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [StagingRoomSetup] setupHooks done")
+
+        Events.GameMessageChat.Remove(OnChat)
+        OnChat = _mpPatch.hooks.protocol_chathandler_new(OnChat, function(fromPlayer)
+            return not not m_PlayerNames[fromPlayer]
+        end)
+        Events.GameMessageChat.Add(OnChat)
+        --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [StagingRoomSetup] chat wrap done")
+
+        _mpPatch.net.clientIsPatched(_mpPatch.protocolVersion)
+        --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [StagingRoomSetup] clientIsPatched sent")
+
+        _mpPatch.hookUpdate()
+        --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [StagingRoomSetup] hookUpdate done")
     end)
-    Events.GameMessageChat.Add(OnChat)
+    if not ok then
+        _mpPatch.debugPrint("DIAG: [StagingRoomSetup] CRASH in setup: " .. tostring(err))
+    end
 
-    _mpPatch.net.clientIsPatched(_mpPatch.protocolVersion)
-
-    _mpPatch.hookUpdate()
     local countdownRunning = false
     _mpPatch.event.update.registerHandler(function(...)
         if not ContextPtr:IsHidden() and countdownRunning then
@@ -58,4 +70,6 @@ if _mpPatch_activateFrontEnd then
         _mpPatch.patch.NetPatch.reset()
         StopCountdown()
     end)
+
+    --[[DIAG]] -- _mpPatch.debugPrint("DIAG: [StagingRoomSetup] block COMPLETED")
 end
