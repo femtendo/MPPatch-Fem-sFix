@@ -21,7 +21,14 @@
 if _mpPatch and _mpPatch.loaded and ContextPtr:GetID() == "ModMultiplayerSelectScreen" then
     Modding = _mpPatch.hookTable(Modding, {
         ActivateDLC = function(...)
-            _mpPatch.overrideModsFromActivatedList()
+            -- Check the Rust-side guard to avoid re-entry loops:
+            -- if an override+reload is already in progress from a previous
+            -- ActivateDLC call, skip the override and let the game proceed.
+            if not _mpPatch.patch.NetPatch.isOverridePending() then
+                _mpPatch.overrideModsFromActivatedList()
+                _mpPatch.patch.NetPatch.overrideReloadMods(true)
+                _mpPatch.patch.NetPatch.setOverridePending(true)
+            end
             Modding._super.ActivateDLC(...)
         end
     })

@@ -28,7 +28,12 @@
 if _mpPatch and _mpPatch.loaded then
     Modding = _mpPatch.hookTable(Modding, {
         ActivateEnabledMods = function(...)
+            -- Mark the override as pending BEFORE calling the real function,
+            -- so that ActivateDLC (which fires during lobby initialization)
+            -- sees the guard and skips its own override+reload cycle. This
+            -- prevents the double-content-switch that bounces to main menu.
             _mpPatch.forceReloadMods()
+            _mpPatch.patch.NetPatch.setOverridePending(true)
             Modding._super.ActivateEnabledMods(...)
         end
     })

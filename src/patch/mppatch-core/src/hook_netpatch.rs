@@ -36,7 +36,10 @@ use std::{
     ffi::{c_void, CStr},
     fmt::{Debug, Formatter},
     mem,
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
 };
 
 #[cfg(all(windows, target_env = "msvc"))]
@@ -129,6 +132,20 @@ const DEFAULT_PATCH_STATE: NetPatchState =
     NetPatchState { dlc_list: Vec::new(), mod_list: Vec::new(), overrides: EnumSet::EMPTY };
 static STATE: Mutex<NetPatchState> = Mutex::new(DEFAULT_PATCH_STATE);
 
+/// Guard flag to prevent re-entry loops during override+reload cycles.
+/// Set by Lua before calling the override, checked by Lua on the next
+/// ActivateDLC invocation. Persists across content switches (Rust-side),
+/// so it survives Lua state recreation.
+static OVERRIDE_PENDING: AtomicBool = AtomicBool::new(false);
+
+pub fn is_override_pending() -> bool {
+    OVERRIDE_PENDING.load(Ordering::Acquire)
+}
+
+pub fn set_override_pending(val: bool) {
+    OVERRIDE_PENDING.store(val, Ordering::Release);
+}
+
 #[derive(EnumSetType, Debug)]
 pub enum OverrideType {
     OverrideDlcs,
@@ -219,6 +236,7 @@ pub fn install() {
     hook_install();
 }
 pub fn reset() {
+    OVERRIDE_PENDING.store(false, Ordering::Release);
     let mut lock = STATE.lock().unwrap();
     #[cfg(windows)]
     hook_unpatch();
@@ -265,7 +283,8 @@ unsafe fn SetActiveDLCAndModsProxy_impl(
         CppList::from_raw(mod_list)
     };
     let reload_dlc = reload_dlc | state.overrides.contains(OverrideType::ForceReloadDlcs);
-    let reload_mods = reload_mods | state.overrides.contains(OverrideType::ForceReloadMods)
+    let reload_mods = reload_mods
+        | state.overrides.contains(OverrideType::ForceReloadMods)
         | state.overrides.contains(OverrideType::OverrideMods);
 
     let result =

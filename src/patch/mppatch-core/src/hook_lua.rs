@@ -209,6 +209,17 @@ fn create_mppatch_table(lua_c: *mut lua_State, lua: &Lua) -> Result<()> {
                 Ok(())
             })?,
         )?;
+        net_patch_table.set(
+            "isOverridePending",
+            lua.create_function(|_, _: ()| Ok(hook_netpatch::is_override_pending()))?,
+        )?;
+        net_patch_table.set(
+            "setOverridePending",
+            lua.create_function(|_, val: bool| {
+                hook_netpatch::set_override_pending(val);
+                Ok(())
+            })?,
+        )?;
 
         patch_table.set("NetPatch", net_patch_table)?;
     }

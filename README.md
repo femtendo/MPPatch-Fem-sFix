@@ -9,6 +9,9 @@ I wanted an easier way to play multiplayer Civ 5 mods.
 This intends to be an all-in-one fork.
 My hope is that this fork encourages more Civ 5 modding!
 
+As far as I could tell, this tool's original repo was deprecated and wasn't touched since 2021. When I tried to spin up some Paper Mario civ leader mods, it simply did not install correctly. This fork intends to allign this project with current Steam release Civ 5, and make mods work in multiplayer effectively and easy again.
+Implements pull #98 from the original repo and a few other fixes.
+
 Have fun~
             ~fem
 ~~~~~~~~~~~~~~~~
@@ -20,14 +23,23 @@ MPPatch is a patch for Civilization V that allows mods to be used in multiplayer
 It supports the Steam versions of Civilization V on Windows and Linux. macOS is supported, but only if you run
 the Windows version of Civilization V through Proton.
 
-You can download the [latest version of MPPatch here](https://github.com/Lymia/MPPatch/releases).
+You can download the [OLD VERSION OF THIS PATCH](https://github.com/Lymia/MPPatch/releases) here.
 
-For usage instructions, [read the user guide](https://github.com/Lymia/MPPatch/wiki/User-Manual).
+For original usage instructions, [read the original repo user guide](https://github.com/Lymia/MPPatch/wiki/User-Manual).
 
 Compiling
 ---------
 
-(TODO: These instructions are heavily outdated.)
+(TODO: These instructions are heavily outdated. create new instructions for building on windows/linux.)
+
+Develop a build-method outside of linux (hard to test a windows game on linux).
+cleanup all build-files like rust from project folder.
+auto mod formatting: some mods on workshop don't put themselves in the right Civ 5 folders. autopatch.
+Create a detailed wiki for easy player set-up and a guide for any poor soul attempting to assist me with updating.
+
+
+---------
+OLD README.txt:
 
 MPPatch can only be built on Linux systems. The build scripts has only been extensively tested on Arch Linux. You are
 on your own for other distributions.
