@@ -31,7 +31,7 @@ sudo apt-get install -y -qq \
 # ---- Phase 1: Rust nightly + targets ----
 echo "=== Phase 1: Installing Rust nightly ==="
 if ! command -v rustup &>/dev/null; then
-    curl --proto '=forcehttps' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     . "$HOME/.cargo/env"
 fi
 rustup toolchain install nightly-2025-02-01
