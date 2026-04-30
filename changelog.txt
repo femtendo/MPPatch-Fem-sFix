@@ -1,0 +1,148 @@
+MPPatch Fem's Fix - Changelog
+==============================
+All timestamps in UTC.
+
+2026-04-30 - Initial Release
+-----------------------------
+
+[BUG FIX] Modded Civilizations Spawning as Vanilla in Multiplayer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+PROBLEM:
+When selecting modded civs (e.g., Grodus from Paper Mario) and launching
+a multiplayer game, they would spawn as vanilla civs (e.g., Japan). This
+made the entire mod-in-multiplayer feature unusable.
+
+ROOT CAUSE:
+The game engine's content switch system clears Lua state between menus.
+When entering the staging room, Modding.ActivateDLC was called with reload
+flags that triggered unnecessary content switches, causing mod state to
+be lost. Additionally, Civ5's include() function caches previously-loaded
+files, which meant some Lua files weren't re-executed in new contexts.
+
+FIXES APPLIED:
+- Added a bounce guard to ActivateDLC: when a mod override is already
+  pending, ActivateDLC returns early, preventing the re-entry loop that
+  caused content switches.
+- Saved _origActivateDLC reference per-Lua-state so the staging room
+  context always has a valid pointer to the real C function.
+- Call the original ActivateDLC from LaunchMultiplayerGame to confirm
+  mod state for the game session (no reload flags, safe to call here).
+- Override mods from PreGame data in staging room for non-host players.
+
+
+[BUG FIX] include() Cache Causing Silent Crashes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+PROBLEM:
+Civ5's include() caches files by path and skips re-execution. This meant
+that _mpPatch.event, _mpPatch.net, _mpPatch.interceptChatFunction,
+_mpPatch.protocolVersion, and _mpPatch.version were never set in certain
+Lua contexts, causing cryptic crashes or missing features.
+
+FIXES APPLIED:
+All five fields are now registered as metatable properties in
+mppatch_mtutils.lua (the first file loaded, always executes):
+- event: read handler returns a lazy-initialized event proxy
+- net: read handler creates chat commands lazily on first access
+- interceptChatFunction: read handler returns the chat intercept closure
+- protocolVersion: lazy val returning "0"
+- version: read handler returns a minimal version table; write handler
+  captures the real table AND ensures .get / .getBoolean exist
+
+This means these fields work correctly regardless of which files Civ5's
+include() decides to cache.
+
+
+[BUG FIX] Staging Room Setup Crashes Silently Swallowed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+PROBLEM:
+Errors in staging room setup (e.g., accessing missing fields on
+_mpPatch) were silently swallowed by Civ5's pcall wrapper around
+LuaOverrides, making debugging impossible.
+
+FIX:
+Wrapped the staging room setup block in a pcall with error logging.
+Now if something crashes during setup, the error is written to
+mppatch_debug.log with a "CRASH in setup:" prefix instead of being
+swallowed silently.
+
+
+[BUG FIX] IsHotLoad Content Switch Losing overridePending State
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+PROBLEM:
+When the Civ5 engine performs a content switch (IsHotLoad), the
+NetPatch state was fully reset, including the overridePending flag
+that protects against bounce loops. This could re-introduce the
+bounce bug after a content switch.
+
+FIX:
+IsHotLoad now checks if overridePending was true before resetting,
+and restores it afterward.
+
+
+[IMPROVEMENT] Debug Code Cleanup
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+All flow-tracing diagnostic prints were commented out using a
+--[[DIAG]] -- prefix pattern. This keeps the code for future
+debugging but avoids spamming logs during normal gameplay.
+
+Error diagnostics are PRESERVED:
+- CRASH in setup: <error>  (staging room setup failures)
+- WARNING: _origActivateDLC not available!  (missing DLC reference)
+
+
+[IMPROVEMENT] Version Display Updated
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The main menu version string now shows the real build version instead
+of "<unknown>". When the Rust binary's MPPATCH_VERSION env var is not
+set at compile time, it falls back to the Scala build's version info,
+and appends "(femsfix)" to distinguish this fork.
+
+Before: "MpPatch v<unknown>"
+After:  "MpPatch v0.16.1(femsfix)"
+
+
+[BUILD] One-Shot Build Script Added
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+scripts/build-femsfix.sh - runs on a fresh Ubuntu 22.04+ VM and:
+1. Installs all dependencies (clang, MinGW-w64, Rust nightly, SBT)
+2. Clones the repo
+3. Builds Rust core DLL + LuaJIT + Win32 wrapper
+4. Builds GraalVM native-image installer
+5. Packages AppImage
+
+Run it:
+  curl -sL https://raw.githubusercontent.com/femtendo/MPPatch-Fem-sFix/master/scripts/build-femsfix.sh | bash
+
+Outputs in target/native-bin/ are the Win32 DLLs you need for the
+Windows installer build.
+
+
+Files Changed
+~~~~~~~~~~~~~
+src/patch/static/ui/lib/mppatch_mtutils.lua
+  - Added event, net, interceptChatFunction, protocolVersion, version
+    properties to survive include() caching
+  - Added chat protocol base (marker, chatProtocolCmds, newChatCommand)
+
+src/patch/static/ui/hooks/frontend/modsmenu/multiplayerselect_keepmods.lua
+  - Bounce guard (skip ActivateDLC when overridePending=true)
+  - Save _origActivateDLC before hookTable wraps Modding
+  - Commented out DIAG prints
+
+src/patch/static/ui/hooks/frontend/staging/stagingroom_keepmods.lua
+  - Save _origActivateDLC in staging room Lua state
+  - Call origActivateDLC before LaunchMultiplayerGame
+  - Commented out DIAG prints
+
+src/patch/static/ui/hooks/frontend/staging/stagingroom_setup.lua
+  - pcall wrapping around all setup calls
+  - Commented out DIAG prints, preserved CRASH diagnostic
+
+src/patch/static/ui/hooks/frontend/mainmenu/mainmenu_status.lua
+  - femsfix version display (fallback for "<unknown>")
+
+src/patch/static/ui/hooks/frontend/mainmenu/mainmenu_resetpatch.lua
+  - Preserve overridePending flag through IsHotLoad content switches
+
+scripts/build-femsfix.sh
+  - One-shot build script for Ubuntu VM
