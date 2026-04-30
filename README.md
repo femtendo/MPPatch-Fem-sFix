@@ -1,4 +1,19 @@
-MPPatch
+~~~~~~~~~~~~~~~~
+   / \__
+  (    @\___
+  /         O
+ /   (_____/
+/_____/   U
+
+I wanted an easier way to play multiplayer Civ 5 mods.
+This intends to be an all-in-one fork.
+My hope is that this fork encourages more Civ 5 modding!
+
+Have fun~
+            ~fem
+~~~~~~~~~~~~~~~~
+
+MPPatch (femsfix 2026)
 =======
 
 MPPatch is a patch for Civilization V that allows mods to be used in multiplayer without any special preparation.

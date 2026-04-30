@@ -265,7 +265,8 @@ unsafe fn SetActiveDLCAndModsProxy_impl(
         CppList::from_raw(mod_list)
     };
     let reload_dlc = reload_dlc | state.overrides.contains(OverrideType::ForceReloadDlcs);
-    let reload_mods = reload_mods | state.overrides.contains(OverrideType::ForceReloadMods);
+    let reload_mods = reload_mods | state.overrides.contains(OverrideType::ForceReloadMods)
+        | state.overrides.contains(OverrideType::OverrideMods);
 
     let result =
         SetActiveDLCAndMods(this, dlc_list.as_raw(), mod_list.as_raw(), reload_dlc, reload_mods);
