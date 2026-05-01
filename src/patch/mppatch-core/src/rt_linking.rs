@@ -206,7 +206,7 @@ pub fn init(_: &MppatchCtx) -> Result<()> {
     }
 
     // find the binary type (mostly needed for Windows, where we hook a .dll)
-    let ty = match exe_name.to_string_lossy().as_ref() {
+    let ty = match exe_name.as_str() {
         "CivilizationV.exe" => BinaryType::Dx9,
         "CivilizationV_DX11.exe" => BinaryType::Dx11,
         "CivilizationV_Tablet.exe" => BinaryType::Tablet,
