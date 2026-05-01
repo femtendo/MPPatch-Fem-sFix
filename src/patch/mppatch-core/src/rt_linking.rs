@@ -197,8 +197,13 @@ fn adjust_offset(offset: usize) -> usize {
 }
 
 pub fn init(_: &MppatchCtx) -> Result<()> {
-    let exe_name = std::env::current_exe()?;
-    let exe_name = exe_name.file_name().unwrap();
+    let exe_path = std::env::current_exe()?;
+    let exe_name = exe_path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if exe_name.is_empty() {
+        log::warn!("rt_linking::init: current_exe() path has no filename component ({exe_path:?}), using default");
+    }
 
     // find the binary type (mostly needed for Windows, where we hook a .dll)
     let ty = match exe_name.to_string_lossy().as_ref() {

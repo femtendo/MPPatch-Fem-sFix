@@ -81,8 +81,11 @@ macro_rules! make_proxy {
         pub struct $lib_sym;
         impl ProxyLibrary for $lib_sym {
             unsafe fn patch(&self, sym: &str, target: *const c_void) -> Result<*const c_void> {
-                let lib = $lib_cache_sym.lock().unwrap();
-                let lib = lib.as_ref().unwrap();
+                let lib_lock = $lib_cache_sym.lock().unwrap();
+                let lib = match lib_lock.as_ref() {
+                    Some(lib) => lib,
+                    None => bail!("Proxy library not loaded (cannot patch symbol {sym})"),
+                };
                 match sym {
                     $($target => {
                         rt_patch::patch_jmp_instruction(
@@ -96,8 +99,11 @@ macro_rules! make_proxy {
                 }
             }
             unsafe fn unpatch(&self, sym: &str) -> Result<()> {
-                let lib = $lib_cache_sym.lock().unwrap();
-                let lib = lib.as_ref().unwrap();
+                let lib_lock = $lib_cache_sym.lock().unwrap();
+                let lib = match lib_lock.as_ref() {
+                    Some(lib) => lib,
+                    None => bail!("Proxy library not loaded (cannot unpatch symbol {sym})"),
+                };
                 match sym {
                     $($target => {
                         let target = lib.symbol($target)?;
