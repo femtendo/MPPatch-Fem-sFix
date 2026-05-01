@@ -28,8 +28,10 @@ use crate::{
     rt_init,
     rt_init::{MppatchCtx, MppatchFeature},
     rt_linking::PatcherContext,
+    rt_patch::PatchedFunction,
 };
 use anyhow::Result;
+use dlopen::raw::Library;
 use libc::c_int;
 use log::{debug, trace};
 use mlua::{
@@ -41,11 +43,15 @@ use mlua::{
     prelude::{LuaFunction, LuaString},
     Lua, Table,
 };
-use std::{ffi::CStr, sync::Mutex};
+use std::{ffi::c_void, sync::Mutex};
 
 type FnType = unsafe extern "C-unwind" fn(*mut lua_State) -> c_int;
 
 static GET_MEMORY_USAGE: Mutex<PatcherContext<FnType>> = Mutex::new(PatcherContext::new());
+/// Holds the direct in-memory patch on the original CvGameDatabase_Original.dll function.
+/// Prevents drop (which would unpatch) and keeps the hook alive for the DLL's lifetime.
+#[cfg(windows)]
+static GET_MEMORY_USAGE_DIRECT: Mutex<Option<PatchedFunction>> = Mutex::new(None);
 
 unsafe fn lGetMemoryUsage(lua: *mut lua_State) -> c_int {
     let func = GET_MEMORY_USAGE.lock().unwrap().as_func();
@@ -59,6 +65,41 @@ pub fn init(ctx: &MppatchCtx) -> Result<()> {
             .lock()
             .unwrap()
             .patch(ctx.version_info.sym_lGetMemoryUsage, lGetMemoryUsageProxy)?;
+
+        // Direct patch: overwrite lGetMemoryUsage in CvGameDatabase_Original.dll's own
+        // memory. The proxy stub only catches calls routed through the PE export table,
+        // but PushDatabaseTable (in the same original DLL) uses a direct internal call
+        // to lGetMemoryUsage that never passes through the export table.
+        #[cfg(windows)]
+        {
+            let mut lib_path = ctx.exe_dir().to_path_buf();
+            lib_path.push("CvGameDatabase_Original.dll");
+            match Library::open(&lib_path) {
+                Ok(lib) => {
+                    let sym = "?lGetMemoryUsage@Lua@Scripting@Database@@SAHPAUlua_State@@@Z";
+                    match lib.symbol::<c_void>(sym) {
+                        Ok(addr) => {
+                            log::info!("Direct-patching lGetMemoryUsage at {:p}", addr);
+                            let patch = PatchedFunction::create(
+                                addr as *mut c_void,
+                                lGetMemoryUsageProxy as *const c_void,
+                                7,
+                                "lGetMemoryUsage (direct)",
+                            );
+                            *GET_MEMORY_USAGE_DIRECT.lock().unwrap() = Some(patch);
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "Could not find lGetMemoryUsage symbol in original DLL: {e}"
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Could not open CvGameDatabase_Original.dll: {e}");
+                }
+            }
+        }
     }
     Ok(())
 }
