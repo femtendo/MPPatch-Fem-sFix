@@ -27,9 +27,7 @@ use crate::{
     hook_netpatch::OverrideType,
     rt_init,
     rt_init::{MppatchCtx, MppatchFeature},
-    rt_linking::PatcherContext,
     rt_patch::PatchedFunction,
-    versions::{ProxySource, SymbolInfo},
 };
 use anyhow::Result;
 use dlopen::raw::Library;
@@ -88,29 +86,35 @@ static GET_MEMORY_USAGE_DIRECT: Mutex<Option<PatchedFunction>> = Mutex::new(None
 #[cfg(windows)]
 static COLLECT_MEMORY_USAGE_DIRECT: Mutex<Option<PatchedFunction>> = Mutex::new(None);
 
-/// PushDatabaseTable hook — replaces DB.GetMemoryUsage with our sentinel handler
-/// as a belt-and-suspenders measure alongside the direct patch above.
-type PushDbFn = unsafe extern "C-unwind" fn(*mut lua_State, *mut c_void, *const libc::c_char);
+/// Direct patch on the in-memory code of PushDatabase in the original DLL.
+/// Catches ALL callers including internal C++ code that caches function pointers.
 #[cfg(windows)]
-static PUSH_DATABASE_TABLE: Mutex<PatcherContext<PushDbFn>> = Mutex::new(PatcherContext::new());
+static PUSH_DATABASE_DIRECT: Mutex<Option<PatchedFunction>> = Mutex::new(None);
 
+type PushDbFn = unsafe extern "C-unwind" fn(*mut lua_State, *mut c_void);
+
+/// Direct patch on the in-memory code of PushDatabase in the original DLL.
+/// After the original creates the DB table with methods (GetMemoryUsage, Execute,
+/// Query, etc.), we replace GetMemoryUsage with our sentinel-intercepting proxy.
 #[cfg(windows)]
-unsafe extern "C-unwind" fn pushDatabaseTableProxy(
+unsafe extern "C-unwind" fn pushDatabaseProxy(
     lua_c: *mut lua_State,
     conn: *mut c_void,
-    name: *const libc::c_char,
 ) {
-    trace("LPT01: PushDatabaseTable proxy entered");
-    let orig = PUSH_DATABASE_TABLE.lock().unwrap().as_func();
-    orig(lua_c, conn, name);
-    trace("LPT02: original returned, replacing GetMemoryUsage");
+    trace("PDB01: PushDatabase proxy entered");
 
-    // Replace GetMemoryUsage on the DB table with our sentinel handler.
-    // lGetMemoryUsageProxy is already extern "C-unwind", matching mlua-sys 0.4.0's lua_CFunction.
+    let guard = PUSH_DATABASE_DIRECT.lock().unwrap();
+    let patch = guard.as_ref().expect("PushDatabase direct patch not initialized");
+    let orig: PushDbFn = std::mem::transmute(patch.old_function());
+    orig(lua_c, conn);
+
+    // After PushDatabase returns, the DB table is at the top of the stack.
+    // Replace GetMemoryUsage with our sentinel-intercepting proxy.
+    trace("PDB02: original returned, replacing GetMemoryUsage on DB table");
     lua_pushstring(lua_c, b"GetMemoryUsage\0".as_ptr() as *const c_char);
     lua_pushcfunction(lua_c, lGetMemoryUsageProxy);
     lua_settable(lua_c, -3);
-    trace("LPT03: GetMemoryUsage replaced on DB table");
+    trace("PDB03: GetMemoryUsage replaced on DB table");
 }
 
 unsafe fn lGetMemoryUsage(lua: *mut lua_State) -> c_int {
@@ -163,22 +167,23 @@ pub fn init(ctx: &MppatchCtx) -> Result<()> {
                 "lCollectMemoryUsage (direct)",
             );
             *COLLECT_MEMORY_USAGE_DIRECT.lock().unwrap() = Some(patch2);
+
+            // ── PushDatabase (direct) ──────────────────────────────────────
+            log::info!("Direct-patching PushDatabase...");
+            let addr_pdb: *mut c_void = orig_lib.symbol(
+                "?PushDatabase@Lua@Scripting@Database@@SAXPAUlua_State@@AAVConnection@3@@Z",
+            )?;
+            log::info!("PushDatabase at {:p}", addr_pdb);
+            let patch3 = PatchedFunction::create(
+                addr_pdb,
+                pushDatabaseProxy as *const c_void,
+                7,
+                "PushDatabase (direct)",
+            );
+            *PUSH_DATABASE_DIRECT.lock().unwrap() = Some(patch3);
         }
 
-        // Proxy-level PushDatabaseTable hook — catches external callers.
-        // (The direct patches above catch internal / Lua-VM callers.)
-        log::info!("Applying PushDatabaseTable patch...");
-        PUSH_DATABASE_TABLE
-            .lock()
-            .unwrap()
-            .patch(
-                SymbolInfo::DllProxy(
-                    ProxySource::CvGameDatabase,
-                    "?PushDatabaseTable@Lua@Scripting@Database@@SAXPAUlua_State@@AAVConnection@3@PBD@Z",
-                ),
-                pushDatabaseTableProxy,
-            )?;
-        trace("L56: PushDatabaseTable proxy patched");
+        trace("L56: PushDatabase direct patch applied");
     }
     trace("L59: hook_lua::init completed");
     Ok(())
@@ -188,13 +193,24 @@ pub fn init(ctx: &MppatchCtx) -> Result<()> {
 fn destroy_usage() {
     #[cfg(windows)]
     {
-        // Setting to None drops the PatchedFunction, which restores the
-        // original bytes and removes the JMP hook.
-        *GET_MEMORY_USAGE_DIRECT.lock().unwrap() = None;
-        *COLLECT_MEMORY_USAGE_DIRECT.lock().unwrap() = None;
+        // Safe cleanup during DLL_PROCESS_DETACH:
+        // - Avoid .unwrap() — a poisoned mutex means something panicked during
+        //   gameplay, and panicking here aborts the detach handler, zombifying
+        //   the process.
+        // - Wrap in catch_unwind so a fault in VirtualProtect/ptr::copy during
+        //   detach doesn't prevent process exit.
+        let _ = std::panic::catch_unwind(|| {
+            if let Ok(mut guard) = GET_MEMORY_USAGE_DIRECT.lock() {
+                *guard = None;
+            }
+            if let Ok(mut guard) = COLLECT_MEMORY_USAGE_DIRECT.lock() {
+                *guard = None;
+            }
+            if let Ok(mut guard) = PUSH_DATABASE_DIRECT.lock() {
+                *guard = None;
+            }
+        });
     }
-    #[cfg(windows)]
-    PUSH_DATABASE_TABLE.lock().unwrap().unpatch();
 }
 
 const LUA_SENTINEL_C: &[u8; 37] = b"216f0090-85dd-4061-8371-3d8ba2099a70\0";
@@ -399,6 +415,16 @@ unsafe fn handle_sentinel(lua_c: *mut lua_State) -> Option<c_int> {
     let ty = lua_type(lua_c, 1);
     trace(&format!("L01b: lua_gettop={top}, lua_type(1)={ty}"));
 
+    // Guard: during Lua VM bootstrapping, the direct patch on lGetMemoryUsage
+    // catches calls before the lua_State is initialized. lua_gettop returns an
+    // absurd value (e.g. 255) because the struct fields are uninitialized.
+    // Calling the original function would crash. Return 0 (no values pushed)
+    // as a safe no-op — this is harmless since no Lua code is running yet.
+    if top > 100 {
+        trace("L01y: Lua state not initialized (top={top}), returning 0");
+        return Some(0);
+    }
+
     if ty != LUA_TSTRING {
         trace("L01x: arg1 is not string, delegating to original");
         return None;
@@ -449,7 +475,9 @@ unsafe fn handle_sentinel(lua_c: *mut lua_State) -> Option<c_int> {
         trace("L05a: returning 1");
         Some(1)
     } else {
-        trace("L06: not sentinel, delegating to original");
+        // Valid pointer but NOT our sentinel — log what string we got (first 64 chars).
+        let actual = std::ffi::CStr::from_ptr(raw).to_string_lossy();
+        trace(&format!("L06: not sentinel, got \"{actual:.64}\", delegating"));
         None
     }
 }

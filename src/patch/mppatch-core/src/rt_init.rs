@@ -183,10 +183,12 @@ pub fn get_ctx() -> &'static MppatchCtx {
 
 #[ctor::dtor]
 fn destroy_ctx() {
-    let ptr = CTX.swap(null_mut(), Ordering::SeqCst);
-    if !ptr.is_null() {
-        unsafe { drop(Box::from_raw(ptr)) }
-    }
+    let _ = std::panic::catch_unwind(|| {
+        let ptr = CTX.swap(null_mut(), Ordering::SeqCst);
+        if !ptr.is_null() {
+            unsafe { drop(Box::from_raw(ptr)) }
+        }
+    });
 }
 
 fn register_panic_hook() {

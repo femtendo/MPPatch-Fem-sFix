@@ -73,15 +73,13 @@ impl PatchedFunction {
 }
 impl Drop for PatchedFunction {
     fn drop(&mut self) {
-        debug!("Unpatching proxied function at {:?}", self.patch_addr);
-
+        // No logging here — this runs during DLL_PROCESS_DETACH where the global
+        // logger may already be torn down. A blocked log write = zombie process.
         unsafe {
             let old_prot = unprotect_region(self.patch_addr, self.patch_bytes);
             ptr::copy(self.patch_target.ptr(), self.patch_addr as *mut u8, self.patch_bytes);
             reprotect_region(self.patch_addr, self.patch_bytes, old_prot);
         }
-
-        debug!("(done)")
     }
 }
 unsafe impl Send for PatchedFunction {}

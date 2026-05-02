@@ -110,7 +110,11 @@ pub fn init(_: &MppatchCtx) -> Result<()> {
 
 #[ctor::dtor]
 fn destroy_set_dlc() {
-    hook_unpatch()
+    let _ = std::panic::catch_unwind(|| {
+        if let Ok(mut guard) = SET_ACTIVE_DLC_AND_MODS.lock() {
+            guard.unpatch();
+        }
+    });
 }
 
 #[derive(Debug)]
