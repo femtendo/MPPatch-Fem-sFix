@@ -12,12 +12,16 @@ My hope is that this fork encourages more Civ 5 modding!
 As far as I could tell, this tool's original repo was deprecated and wasn't touched 
 since 2021. When I tried to spin up some Paper Mario civ leader mods, it simply did 
 not install correctly. This fork intends to allign this project with current Steam 
-release Civ 5, and make mods work in multiplayer effectively and eas.
+release Civ 5, and make mods work in multiplayer effectively and easy.
 Implements pull #98 from the original repo and a few other fixes.
 
 Have fun~
             ~fem
 ~~~~~~~~~~~~~~~~
+
+This fix required some wonky ubuntu vm file transfers to get working. I will attempt
+to uplaod a shell scrpt in the future to auto-build the required native-bin files
+based on this repo.
 
 MPPatch (femsfix 2026)
 =======

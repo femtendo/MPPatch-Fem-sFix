@@ -40,6 +40,11 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+fn trace(msg: &str) {
+    // Relative path only — inside #[ctor] (DllMain), current_exe() panics silently.
+    let _ = std::fs::write("mppatch_trace.txt", msg);
+}
+
 unsafe fn runtime_transmute<T: Copy, V: Copy>(t: T) -> V {
     if size_of::<T>() == size_of::<V>() {
         ptr::read(&t as *const T as *const V)
@@ -164,6 +169,7 @@ impl<T: Copy> PatcherContext<T> {
     }
 
     pub unsafe fn as_func(&self) -> T {
+        trace("R10: as_func called (this is a known unwrap site)");
         self.patch_info.as_ref().unwrap().as_func()
     }
 

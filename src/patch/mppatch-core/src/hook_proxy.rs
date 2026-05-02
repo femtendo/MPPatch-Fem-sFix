@@ -42,7 +42,7 @@ macro_rules! make_proxy {
         $(($sym:ident $target:literal))*
     ) => {
         $(
-            #[naked]
+            #[unsafe(naked)]
             #[export_name = concat!("mppatch_proxy_", $dll_name_short, "_", $target)]
             #[link_section = ".text_proxy"]
             unsafe extern "C" fn $sym(number: usize) -> usize {

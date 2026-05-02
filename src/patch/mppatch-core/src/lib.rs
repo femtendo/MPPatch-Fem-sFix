@@ -20,12 +20,11 @@
  * THE SOFTWARE.
  */
 
-#![cfg_attr(windows, feature(naked_functions))]
-
 use crate::rt_init::MppatchFeature;
 use ctor::ctor;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[cfg(windows)]
 mod hook_lua;
 #[cfg(unix)]
 mod hook_luajit;
@@ -45,22 +44,38 @@ mod versions;
 /// LoadLibrary("CvGameDatabase_Original.dll") is technically warned against inside
 /// DllMain, but the original DLL's dependencies (KERNEL32, MSVCR90, lua51_Win32)
 /// are all already loaded, so no deadlock risk in practice.
+fn trace(msg: &str) {
+    // Overwrite — only keep the latest trace step.
+    // Relative path only — inside #[ctor] (DllMain), current_exe() panics silently
+    // because std internals aren't initialized yet and panic=abort kills the process.
+    let _ = std::fs::write("mppatch_trace.txt", msg);
+}
+
 fn ctor_impl() -> anyhow::Result<()> {
+    trace("C01: ctor_impl started");
     let ctx = rt_init::run()?;
+    trace("C02: rt_init::run completed");
     rt_linking::init(ctx)?;
+    trace("C03: rt_linking::init completed");
     #[cfg(windows)]
     if ctx.has_feature(MppatchFeature::Multiplayer) {
+        trace("C04: starting hook_proxy::init");
         // Load CvGameDatabase_Original.dll and patch proxy stubs with JMPs.
         // This MUST run before hook_lua and hook_netpatch because they resolve
         // DllProxy symbols through the loaded library.
         hook_proxy::init(ctx)?;
+        trace("C05: hook_proxy::init completed");
+        trace("C06: starting hook_lua::init");
         hook_lua::init(&ctx)?;
+        trace("C07: hook_lua::init completed");
         hook_netpatch::init(&ctx)?;
+        trace("C08: hook_netpatch::init completed");
     }
     #[cfg(unix)]
     if ctx.has_feature(MppatchFeature::LuaJit) {
         hook_luajit::init(&ctx)?;
     }
+    trace("C09: ctor_impl completed successfully");
     Ok(())
 }
 
@@ -73,10 +88,7 @@ pub fn ensure_initialized() {
 
 #[ctor]
 fn ctor() {
-    if let Ok(mut path) = std::env::current_exe() {
-        path.pop();
-        path.push("mppatch_ctor.txt");
-        let _ = std::fs::write(&path, b"ctor started");
-    }
+    // Relative path only — see trace() above for why current_exe() is unsafe here.
+    let _ = std::fs::write("mppatch_ctor.txt", "ctor started\n");
     rt_init::check_error(ctor_impl());
 }

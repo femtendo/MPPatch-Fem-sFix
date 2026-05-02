@@ -29,11 +29,12 @@ use crate::{
     rt_init::{MppatchCtx, MppatchFeature},
     rt_linking::PatcherContext,
     rt_patch::PatchedFunction,
+    versions::{ProxySource, SymbolInfo},
 };
 use anyhow::Result;
 use dlopen::raw::Library;
-use libc::c_int;
-use log::{debug, trace};
+use libc::{c_char, c_int};
+use log::debug;
 use mlua::{
     ffi::{
         luaL_checkstring, lua_getfenv, lua_gettable, lua_gettop, lua_insert, lua_isnil, lua_pop,
@@ -43,73 +44,160 @@ use mlua::{
     prelude::{LuaFunction, LuaString},
     Lua, Table,
 };
-use std::{ffi::c_void, sync::Mutex};
+use std::{ffi::CStr, ffi::c_void, sync::Mutex};
+
+/// Pure Rust strcmp — compares a C string against a byte array (expected must include
+/// its trailing \0 in the slice). No CRT dependency, no allocation, no strlen.
+unsafe fn c_str_eq(ptr: *const libc::c_char, expected: &[u8]) -> bool {
+    // Read first byte first — this is the most likely crash point if ptr is bad.
+    // We check it before the loop so we can report what we got.
+    let first = *ptr as u8;
+    for (i, &exp) in expected.iter().enumerate() {
+        let c = if i == 0 { first } else { *ptr.add(i) as u8 };
+        if c != exp {
+            return false;
+        }
+        if c == 0 {
+            return true;
+        }
+    }
+    false
+}
+
+/// Trace helper — appends to a file that survives abort().
+/// Each call adds a new line so we see the full execution sequence.
+/// Relative path only — inside #[ctor] (DllMain), current_exe() panics silently.
+fn trace(msg: &str) {
+    use std::io::Write;
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("mppatch_trace.txt")
+        .and_then(|mut f| writeln!(f, "{msg}"));
+}
 
 type FnType = unsafe extern "C-unwind" fn(*mut lua_State) -> c_int;
 
-static GET_MEMORY_USAGE: Mutex<PatcherContext<FnType>> = Mutex::new(PatcherContext::new());
-/// Holds the direct in-memory patch on the original CvGameDatabase_Original.dll function.
-/// Prevents drop (which would unpatch) and keeps the hook alive for the DLL's lifetime.
+/// Direct patch on the in-memory code of lGetMemoryUsage in the original DLL.
+/// Catches ALL callers including the Lua VM (which calls via C function pointer,
+/// bypassing the DLL export table that proxy hooks rely on).
 #[cfg(windows)]
 static GET_MEMORY_USAGE_DIRECT: Mutex<Option<PatchedFunction>> = Mutex::new(None);
 
+/// Direct patch for lCollectMemoryUsage — same rationale.
+#[cfg(windows)]
+static COLLECT_MEMORY_USAGE_DIRECT: Mutex<Option<PatchedFunction>> = Mutex::new(None);
+
+/// PushDatabaseTable hook — replaces DB.GetMemoryUsage with our sentinel handler
+/// as a belt-and-suspenders measure alongside the direct patch above.
+type PushDbFn = unsafe extern "C-unwind" fn(*mut lua_State, *mut c_void, *const libc::c_char);
+#[cfg(windows)]
+static PUSH_DATABASE_TABLE: Mutex<PatcherContext<PushDbFn>> = Mutex::new(PatcherContext::new());
+
+#[cfg(windows)]
+unsafe extern "C-unwind" fn pushDatabaseTableProxy(
+    lua_c: *mut lua_State,
+    conn: *mut c_void,
+    name: *const libc::c_char,
+) {
+    trace("LPT01: PushDatabaseTable proxy entered");
+    let orig = PUSH_DATABASE_TABLE.lock().unwrap().as_func();
+    orig(lua_c, conn, name);
+    trace("LPT02: original returned, replacing GetMemoryUsage");
+
+    // Replace GetMemoryUsage on the DB table with our sentinel handler.
+    // lGetMemoryUsageProxy is already extern "C-unwind", matching mlua-sys 0.4.0's lua_CFunction.
+    lua_pushstring(lua_c, b"GetMemoryUsage\0".as_ptr() as *const c_char);
+    lua_pushcfunction(lua_c, lGetMemoryUsageProxy);
+    lua_settable(lua_c, -3);
+    trace("LPT03: GetMemoryUsage replaced on DB table");
+}
+
 unsafe fn lGetMemoryUsage(lua: *mut lua_State) -> c_int {
-    let func = GET_MEMORY_USAGE.lock().unwrap().as_func();
-    func(lua)
+    trace("L10: lGetMemoryUsage entered");
+    let guard = GET_MEMORY_USAGE_DIRECT.lock().unwrap();
+    let patch = guard.as_ref().expect("lGetMemoryUsage direct patch not initialized");
+    let orig: FnType = std::mem::transmute(patch.old_function());
+    trace("L13: calling original lGetMemoryUsage");
+    let r = orig(lua);
+    trace(&format!("L14: original returned {r}"));
+    r
 }
 
 pub fn init(ctx: &MppatchCtx) -> Result<()> {
-    log::info!("Applying lGetMemoryUsage patch...");
+    trace("L50: hook_lua::init started");
     unsafe {
-        GET_MEMORY_USAGE
-            .lock()
-            .unwrap()
-            .patch(ctx.version_info.sym_lGetMemoryUsage, lGetMemoryUsageProxy)?;
-
-        // Direct patch: overwrite lGetMemoryUsage in CvGameDatabase_Original.dll's own
-        // memory. The proxy stub only catches calls routed through the PE export table,
-        // but PushDatabaseTable (in the same original DLL) uses a direct internal call
-        // to lGetMemoryUsage that never passes through the export table.
         #[cfg(windows)]
         {
+            // Prepend exe_dir to get the full path to the original DLL.
+            // The proxy module has already loaded it; we open it again (refcount++)
+            // so we can resolve the mangled C++ symbol to its in-memory address.
             let mut lib_path = ctx.exe_dir().to_path_buf();
             lib_path.push("CvGameDatabase_Original.dll");
-            match Library::open(&lib_path) {
-                Ok(lib) => {
-                    let sym = "?lGetMemoryUsage@Lua@Scripting@Database@@SAHPAUlua_State@@@Z";
-                    match lib.symbol::<c_void>(sym) {
-                        Ok(addr) => {
-                            log::info!("Direct-patching lGetMemoryUsage at {:p}", addr);
-                            let patch = PatchedFunction::create(
-                                addr as *mut c_void,
-                                lGetMemoryUsageProxy as *const c_void,
-                                7,
-                                "lGetMemoryUsage (direct)",
-                            );
-                            *GET_MEMORY_USAGE_DIRECT.lock().unwrap() = Some(patch);
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "Could not find lGetMemoryUsage symbol in original DLL: {e}"
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::warn!("Could not open CvGameDatabase_Original.dll: {e}");
-                }
-            }
+            let orig_lib = Library::open(&lib_path)?;
+
+            // ── lGetMemoryUsage (direct) ──────────────────────────────────
+            log::info!("Direct-patching lGetMemoryUsage...");
+            let addr_lget: *mut c_void = orig_lib.symbol(
+                "?lGetMemoryUsage@Lua@Scripting@Database@@SAHPAUlua_State@@@Z",
+            )?;
+            log::info!("lGetMemoryUsage at {:p}", addr_lget);
+            let patch = PatchedFunction::create(
+                addr_lget,
+                lGetMemoryUsageProxy as *const c_void,
+                7,
+                "lGetMemoryUsage (direct)",
+            );
+            *GET_MEMORY_USAGE_DIRECT.lock().unwrap() = Some(patch);
+
+            // ── lCollectMemoryUsage (direct) ─────────────────────────────
+            log::info!("Direct-patching lCollectMemoryUsage...");
+            let addr_lcollect: *mut c_void = orig_lib.symbol(
+                "?lCollectMemoryUsage@Lua@Scripting@Database@@SAHPAUlua_State@@@Z",
+            )?;
+            log::info!("lCollectMemoryUsage at {:p}", addr_lcollect);
+            let patch2 = PatchedFunction::create(
+                addr_lcollect,
+                lCollectMemoryUsageProxy as *const c_void,
+                7,
+                "lCollectMemoryUsage (direct)",
+            );
+            *COLLECT_MEMORY_USAGE_DIRECT.lock().unwrap() = Some(patch2);
         }
+
+        // Proxy-level PushDatabaseTable hook — catches external callers.
+        // (The direct patches above catch internal / Lua-VM callers.)
+        log::info!("Applying PushDatabaseTable patch...");
+        PUSH_DATABASE_TABLE
+            .lock()
+            .unwrap()
+            .patch(
+                SymbolInfo::DllProxy(
+                    ProxySource::CvGameDatabase,
+                    "?PushDatabaseTable@Lua@Scripting@Database@@SAXPAUlua_State@@AAVConnection@3@PBD@Z",
+                ),
+                pushDatabaseTableProxy,
+            )?;
+        trace("L56: PushDatabaseTable proxy patched");
     }
+    trace("L59: hook_lua::init completed");
     Ok(())
 }
 
 #[ctor::dtor]
 fn destroy_usage() {
-    GET_MEMORY_USAGE.lock().unwrap().unpatch();
+    #[cfg(windows)]
+    {
+        // Setting to None drops the PatchedFunction, which restores the
+        // original bytes and removes the JMP hook.
+        *GET_MEMORY_USAGE_DIRECT.lock().unwrap() = None;
+        *COLLECT_MEMORY_USAGE_DIRECT.lock().unwrap() = None;
+    }
+    #[cfg(windows)]
+    PUSH_DATABASE_TABLE.lock().unwrap().unpatch();
 }
 
-const LUA_SENTINEL: &str = "216f0090-85dd-4061-8371-3d8ba2099a70";
+const LUA_SENTINEL_C: &[u8; 37] = b"216f0090-85dd-4061-8371-3d8ba2099a70\0";
 
 const LUA_TABLE_INDEX: &str = "4f9ef697-7746-45d3-9c2d-f2121464a359";
 const LUA_TABLE_INDEX_C: &CStr =
@@ -126,7 +214,8 @@ const LUA_FUNC_GET_GLOBALS_C: &CStr =
     };
 
 fn create_mppatch_table(lua_c: *mut lua_State, lua: &Lua) -> Result<()> {
-    trace!("Building MPPatch function table...");
+    trace("L20: create_mppatch_table started");
+    trace("L21: building MPPatch function table...");
 
     let ctx = rt_init::get_ctx();
 
@@ -167,6 +256,8 @@ fn create_mppatch_table(lua_c: *mut lua_State, lua: &Lua) -> Result<()> {
         patch_table.set("config", config_table)?;
     }
 
+    trace("L22: getting globals table via sentinel method");
+
     // find actual globals table
     let globals = {
         unsafe {
@@ -182,6 +273,7 @@ fn create_mppatch_table(lua_c: *mut lua_State, lua: &Lua) -> Result<()> {
 
     // globals table
     {
+        trace("L23: building globals sub-table");
         let globals_table = lua.create_table()?;
         globals_table.set("rawget", globals.get::<_, LuaFunction>("rawget")?)?;
         globals_table.set("rawset", globals.get::<_, LuaFunction>("rawset")?)?;
@@ -190,6 +282,7 @@ fn create_mppatch_table(lua_c: *mut lua_State, lua: &Lua) -> Result<()> {
 
     // NetPatch table
     {
+        trace("L24: building NetPatch sub-table");
         let net_patch_table = lua.create_table()?;
 
         net_patch_table.set(
@@ -265,48 +358,136 @@ fn create_mppatch_table(lua_c: *mut lua_State, lua: &Lua) -> Result<()> {
         patch_table.set("NetPatch", net_patch_table)?;
     }
 
+    trace("L29: storing patch table in Lua registry");
     lua.set_named_registry_value(LUA_TABLE_INDEX, patch_table)?;
+    trace("L30: create_mppatch_table completed successfully");
     Ok(())
 }
 
 /// this can't be done entire in mlua, unfortunately
 unsafe extern "C-unwind" fn get_globals_table(lua_c: *mut lua_State) -> c_int {
+    trace("L40: get_globals_table entered");
     lua_pushstring(lua_c, CStr::from_bytes_with_nul(b"\0").unwrap().as_ptr()); // S
     lua_pushstring(lua_c, CStr::from_bytes_with_nul(b"gsub\0").unwrap().as_ptr()); // S S
+    trace("L41: calling lua_gettable");
     lua_gettable(lua_c, -2);
+    trace("L42: calling lua_getfenv");
     lua_getfenv(lua_c, -1);
+    trace("L43: calling lua_insert/pop");
     lua_insert(lua_c, -3);
     lua_pop(lua_c, 2);
+    trace("L44: get_globals_table returning");
     1
 }
 
-pub unsafe extern "C-unwind" fn lGetMemoryUsageProxy(lua_c: *mut lua_State) -> c_int {
-    // Phase B deferred init: load CvGameDatabase_Original.dll outside DllMain context.
-    // This is safe because lGetMemoryUsageProxy is called during normal game execution,
-    // well after DllMain has returned. The AtomicBool guard prevents re-entrancy.
-    crate::ensure_initialized();
+/// Separate trace file — only writes when we get a non-0x4 pointer (potential sentinel).
+/// This survives even if the main trace file write starts failing silently.
+fn trace_sentinel(msg: &str) {
+    use std::io::Write;
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("mppatch_sentinel_detect.txt")
+        .and_then(|mut f| writeln!(f, "{msg}"));
+}
 
-    if lua_type(lua_c, 1) == LUA_TSTRING
-        && CStr::from_ptr(luaL_checkstring(lua_c, 1)).to_string_lossy() == LUA_SENTINEL
-    {
-        trace!("Found sentinel value, returning MPPatch function table.");
+/// Extracted sentinel check and table creation — shared by lGetMemoryUsageProxy
+/// and lCollectMemoryUsageProxy. Returns Some(n) if sentinel was handled (return n
+/// from the proxy), or None if we should delegate to the original function.
+unsafe fn handle_sentinel(lua_c: *mut lua_State) -> Option<c_int> {
+    let top = lua_gettop(lua_c);
+    let ty = lua_type(lua_c, 1);
+    trace(&format!("L01b: lua_gettop={top}, lua_type(1)={ty}"));
 
+    if ty != LUA_TSTRING {
+        trace("L01x: arg1 is not string, delegating to original");
+        return None;
+    }
+
+    trace("L01c: arg1 is string, checking sentinel");
+    let raw = luaL_checkstring(lua_c, 1);
+    trace("L01d: luaL_checkstring returned");
+    trace(&format!("L01d2: raw ptr={:p}", raw));
+    // During early engine init, luaL_checkstring can return a garbage pointer
+    // (e.g. 0x4) from a corrupted/not-yet-initialized Lua state. Guard against
+    // dereferencing invalid pointers — everything below 64KB is unmapped on
+    // x86 Windows, so this is a safe canary.
+    if (raw as usize) < 0x10000 {
+        trace("L01e: skipping sentinel check (invalid ptr), returning 0");
+        return Some(0);
+    }
+    // Log non-0x4 pointer to separate trace file — if the sentinel call reaches
+    // us with a valid string, it will appear here even if main trace file fails.
+    trace_sentinel(&format!("VALID PTR: raw={:p}, top={top}", raw));
+    trace("L01d1: comparing with c_str_eq");
+    if c_str_eq(raw, LUA_SENTINEL_C) {
+        trace("L02: sentinel matched, building MPPatch table");
+        trace("L02a: pushing table index to registry");
         lua_pushstring(lua_c, LUA_TABLE_INDEX_C.as_ptr());
+        trace("L02b: calling lua_gettable");
         lua_gettable(lua_c, LUA_REGISTRYINDEX);
+        trace("L02c: checking if table exists");
         if lua_isnil(lua_c, lua_gettop(lua_c)) != 0 {
+            trace("L03: no existing table, creating new one");
             lua_pop(lua_c, 1);
 
+            trace("L03a: initializing Lua from ptr");
             let lua = Lua::init_from_ptr(lua_c);
+            trace("L03b: creating MPPatch table");
             rt_init::check_error(create_mppatch_table(lua_c, &lua));
+            trace("L03c: dropping Lua handle");
             drop(lua);
+            trace("L03d: table creation done");
         } else {
+            trace("L04: existing table found in registry");
             lua_pop(lua_c, 1);
         }
 
+        trace("L05: pushing MPPatch table to Lua stack");
         lua_pushstring(lua_c, LUA_TABLE_INDEX_C.as_ptr());
         lua_gettable(lua_c, LUA_REGISTRYINDEX);
-        1
+        trace("L05a: returning 1");
+        Some(1)
     } else {
-        lGetMemoryUsage(lua_c)
+        trace("L06: not sentinel, delegating to original");
+        None
     }
+}
+
+pub unsafe extern "C-unwind" fn lGetMemoryUsageProxy(lua_c: *mut lua_State) -> c_int {
+    trace("L01: lGetMemoryUsageProxy entered");
+
+    crate::ensure_initialized();
+    trace("L01a: ensure_initialized done");
+
+    if let Some(result) = handle_sentinel(lua_c) {
+        return result;
+    }
+
+    lGetMemoryUsage(lua_c)
+}
+
+pub unsafe extern "C-unwind" fn lCollectMemoryUsageProxy(lua_c: *mut lua_State) -> c_int {
+    trace("LC01: lCollectMemoryUsageProxy entered");
+
+    crate::ensure_initialized();
+    trace("LC01a: ensure_initialized done");
+
+    if let Some(result) = handle_sentinel(lua_c) {
+        return result;
+    }
+
+    lCollectMemoryUsage(lua_c)
+}
+
+/// Calls the original lCollectMemoryUsage via the direct-patch trampoline.
+unsafe fn lCollectMemoryUsage(lua: *mut lua_State) -> c_int {
+    trace("LC10: lCollectMemoryUsage entered");
+    let guard = COLLECT_MEMORY_USAGE_DIRECT.lock().unwrap();
+    let patch = guard.as_ref().expect("lCollectMemoryUsage direct patch not initialized");
+    let orig: FnType = std::mem::transmute(patch.old_function());
+    trace("LC13: calling original lCollectMemoryUsage");
+    let r = orig(lua);
+    trace(&format!("LC14: original returned {r}"));
+    r
 }

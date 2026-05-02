@@ -142,12 +142,21 @@ fn setup_logging(ctx: &MppatchCtx) {
     let _ = CombinedLogger::init(loggers);
 }
 
+fn trace(msg: &str) {
+    // Relative path only — inside #[ctor] (DllMain), current_exe() panics silently.
+    let _ = std::fs::write("mppatch_trace.txt", msg);
+}
+
 static CTX: AtomicPtr<MppatchCtx> = AtomicPtr::new(null_mut());
 
 pub fn run() -> Result<&'static MppatchCtx> {
+    trace("R00: rt_init::run started");
     early_setup();
+    trace("R01: early_setup done");
     let ctx = create_ctx()?;
+    trace("R02: create_ctx done");
     setup_logging(&ctx);
+    trace("R03: setup_logging done");
     register_panic_hook();
     if ctx.version_info.platform != Platform::CURRENT {
         panic!("Specified Civilization version is not compatible with this patch.");
