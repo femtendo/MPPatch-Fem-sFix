@@ -3,7 +3,8 @@ name: Build distribution
 on:
   push:
     branches: [ master ]
-    tags: [ '*' ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
 
 env:
   SHELL: /bin/bash
@@ -13,33 +14,21 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux/archlinux:multilib-devel
     steps:
-      # Install packages
       - run: pacman --noconfirm -Sy sbt jdk-openjdk git mingw-w64 clang nasm rustup python3
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          default: true
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          target: i686-pc-windows-gnu
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          target: i686-unknown-linux-gnu
 
-      # Initialize git
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
       - run: git config --global --add safe.directory /__w/MPPatch/MPPatch
       - run: git fetch --prune --unshallow --tags
 
-      # Do the actual build
+      # rustup toolchain installed via rust-toolchain.toml
+      - run: rustup default nightly
+      - run: rustup target add i686-pc-windows-gnu i686-unknown-linux-gnu
+
       - run: scripts/ci/build-natives_linux.sh
 
-      # Upload artifacts
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: mppatch_ci_natives-linux.tar.gz
           path: target/mppatch_ci_natives-linux.tar.gz
@@ -49,29 +38,25 @@ jobs:
     needs:
       - buildNative
     steps:
-      # Initialize
-      - uses: actions/setup-java@v3
+      - uses: actions/setup-java@v4
         with:
           distribution: 'liberica'
           java-version: '21'
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
       - run: git fetch --prune --unshallow --tags
 
-      # Download artifacts
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: mppatch_ci_natives-linux.tar.gz
           path: target/mppatch_ci_natives-linux
       - run: mv target/mppatch_ci_natives-linux/* target/
       - run: rm -rf target/mppatch_ci_natives-linux
 
-      # Do the actual build
       - run: scripts/ci/build-ni_linux.sh
 
-      # Upload artifacts
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: mppatch_ci_ni-linux
           path: target/native-image-linux/*
@@ -81,30 +66,26 @@ jobs:
     needs:
       - buildNative
     steps:
-      # Initialize
-      - uses: actions/setup-java@v3
+      - uses: actions/setup-java@v4
         with:
           distribution: 'liberica'
           java-version: '21'
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
       - run: git fetch --prune --unshallow --tags
 
-      # Download artifacts
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: mppatch_ci_natives-linux.tar.gz
           path: target/mppatch_ci_natives-linux
       - run: mv target/mppatch_ci_natives-linux/* target/
       - run: rm -Recurse -Force -Verbose target/mppatch_ci_natives-linux
 
-      # Do the actual build
       - uses: ilammy/msvc-dev-cmd@v1
       - run: pwsh -file scripts/ci/build-ni_win32.ps1
 
-      # Upload artifacts
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: mppatch_ci_ni-win32
           path: target/native-image-win32/*
@@ -114,28 +95,24 @@ jobs:
     needs:
       - buildNativeImageLinux
     steps:
-      # Initialize
-      - uses: actions/setup-java@v3
+      - uses: actions/setup-java@v4
         with:
           distribution: 'liberica'
           java-version: '21'
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
       - run: git fetch --prune --unshallow --tags
       - run: sudo apt install libfuse2
 
-      # Download artifacts
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: mppatch_ci_ni-linux
           path: target/native-image-linux
 
-      # Do the actual build
       - run: scripts/ci/build-installer_linux.sh
 
-      # Upload artifacts
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: mppatch_ci_installer-linux
           path: target/MPPatch-Installer_*
@@ -145,28 +122,24 @@ jobs:
     needs:
       - buildNativeImageWindows
     steps:
-      # Initialize
-      - uses: actions/setup-java@v3
+      - uses: actions/setup-java@v4
         with:
           distribution: 'liberica'
           java-version: '21'
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
       - run: git fetch --prune --unshallow --tags
 
-      # Download artifacts
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: mppatch_ci_ni-win32
           path: target/native-image-win32
 
-      # Do the actual build
       - run: choco install nsis
       - run: pwsh -file scripts/ci/build-installer_win32.ps1
 
-      # Upload artifacts
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: mppatch_ci_installer-win32
           path: target/MPPatch-Installer_*
@@ -176,48 +149,32 @@ jobs:
     needs:
       - buildInstallerLinux
       - buildInstallerWindows
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      # Initialize git
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
-      - name: Fetch git tags.
-        run: git fetch --prune --unshallow --tags
-      - name: Get version as Github variable.
-        run: 'echo "VERSION_STR=ci_build-$GITHUB_RUN_NUMBER" >> $GITHUB_ENV'
+      - run: git fetch --prune --unshallow --tags
 
-      # Download artifacts
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: mppatch_ci_installer-linux
           path: mppatch_ci_installer-linux
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: mppatch_ci_installer-win32
           path: mppatch_ci_installer-win32
-      - name: Build directory structure
-        run: |
+      - run: |
           mkdir -pv target/dist
           cp -v mppatch_ci_installer-linux/* target/dist/
           cp -v mppatch_ci_installer-win32/* target/dist/
 
-      # Upload the build to GitHub
-      - name: Remove git hooks (hack to make action-create-tag work)
-        run: 'rm -rfv .git/hooks/*'
-      - uses: rickstaa/action-create-tag@v1
+      - uses: softprops/action-gh-release@v2
         with:
-          tag: ${{ env.VERSION_STR }}
-          message: CI release ${{ env.VERSION_STR }}
-      - uses: softprops/action-gh-release@v1
-        with:
-          name: ${{ env.VERSION_STR }}
-          tag_name: ${{ env.VERSION_STR }}
-          body: |
-            CI Build ${{ env.VERSION_STR }}
-            This is an development build.
-            Expect that things may be completely broken or for there to be subtle game-breaking bugs.
-            Use this build at your own risk.
+          name: MPPatch ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
           prerelease: true
           files: target/dist/**
           fail_on_unmatched_files: true
-          generate_release_notes: true
+          generate_release_notes: false
