@@ -2,6 +2,63 @@ MPPatch Fem's Fix - Changelog
 ==============================
 All timestamps in UTC.
 
+2026-05-02 - v0.2.1
+--------------------
+
+[BUG FIX] "Patch Failed to Load" / Missing Multiplayer Mod Menu
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+PROBLEM:
+The multiplayer mod menu appeared but showed "patch failed to load, no
+multiplayer mod menu" at the bottom. The MPPatch Lua API table was never
+injected into the Lua VM.
+
+ROOT CAUSE:
+The sentinel mechanism intercepts DB.GetMemoryUsage() to create and return
+the MPPatch API table. However, the proxy was patching PushDatabaseTable
+(which creates individual data tables like IconTextureAtlases, GameSpeeds)
+instead of PushDatabase (which creates the main DB object with GetMemoryUsage).
+C++ name mangling made the two symbols look confusingly similar.
+
+FIXES APPLIED:
+- Replaced the PushDatabaseTable direct patch with a PushDatabase direct
+  patch on the correct mangled symbol
+  (?PushDatabase@Lua@Scripting@Database@@SAXPAUlua_State@@AAVConnection@3@@Z)
+- After PushDatabase returns, the proxy replaces GetMemoryUsage on the
+  newly-created DB table with our sentinel-intercepting proxy function
+- Removed the incorrect PushDatabaseTable patch entirely
+
+
+[BUG FIX] Civ5 Process Remains as Zombie After Exit
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+PROBLEM:
+Closing Civ5 left the process running in the background. Task Manager kill
+worked, but it wouldn't exit on its own.
+
+ROOT CAUSE:
+During DLL_PROCESS_DETACH (Windows loader lock), three issues compounded:
+1. PatchedFunction::drop() called debug!() which could deadlock on the
+   global logger (already being torn down)
+2. destroy_usage() used .unwrap() on Mutexes — a poisoned mutex from an
+   earlier gameplay panic would double-panic during detach, aborting the
+   handler
+3. A panic or hang in any dtor during DLL_PROCESS_DETACH prevents the
+   process from exiting
+
+FIXES APPLIED:
+- Removed all debug!() calls from PatchedFunction::drop() — no logging
+  during detach
+- Replaced .unwrap() with .lock().ok() in all #[ctor::dtor] functions
+- Wrapped all dtor bodies in std::panic::catch_unwind so a fault in
+  VirtualProtect/ptr::copy during detach doesn't block process exit
+
+
+[BUILD] Windows Installer Build Pipeline
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Full installer build now works on Windows directly (not just Linux CI):
+- SBT + GraalVM Liberica 21 for native-image compilation
+- NSIS 3.x packaging with rcedit version info
+- One-shot build from clean commit, no -DIRTY version suffix
+
 2026-04-30 - Initial Release
 -----------------------------
 
