@@ -61,7 +61,7 @@ fi
 
 # Advanced-instruction mnemonics to forbid on x86.
 # (AVX/BMI/FMA families + a few others that imply >baseline SSE2):
-X86_BAD='\b(vfmadd|vfnmadd|vfmsub|vfnmsub|vzeroupper|andn|bextr|blsi|blsmsk|blsr|bzhi|mulx|pdep|pext|rorx|sarx|shlx|shrx|tzcnt|popcnt|adcx|adox|pclmulqdq|aes(enc|dec)|vaes|sha1|sha256|kmovd|vpclmulqdq)\b'
+X86_BAD='\b(vfmadd|vfnmadd|vfmsub|vfnmsub|andn|bextr|blsi|blsmsk|blsr|bzhi|mulx|pdep|pext|rorx|sarx|shlx|shrx|tzcnt|popcnt|adcx|adox|pclmulqdq|vpaddd|vpsubd|vpmulld|vpmullw|vmovdqa|vmovdqu|vpshufd|vextracti128|vinserti128|vpermilps|vbroadcastss|vpbroadcastd|aes(enc|dec)|vaes|sha1|sha256|kmovd|vpclmulqdq)\b'
 ARM64_BAD='^$'
 
 case "$MARCH" in
