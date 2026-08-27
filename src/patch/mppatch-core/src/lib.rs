@@ -33,6 +33,7 @@ mod hook_luajit;
 mod hook_netpatch;
 #[cfg(windows)]
 mod hook_proxy;
+pub mod mod_normalize;
 mod rt_cpplist;
 mod rt_init;
 mod rt_linking;
@@ -88,6 +89,7 @@ pub fn ensure_initialized() {
     DEFERRED_INIT_DONE.store(true, Ordering::SeqCst);
 }
 
+#[cfg(not(test))]
 #[ctor]
 fn ctor() {
     // Relative path only — see trace() above for why current_exe() is unsafe here.

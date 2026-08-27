@@ -1,0 +1,2 @@
+<?xml version="1.0"?>
+<Mod id="def"><name>CoolMod</name><Actions><Action><Set>InGame</Set><Type>UpdateText</Type><File>Assets/Gameplay/SQL/foo.sql</File></Action></Actions></Mod>
