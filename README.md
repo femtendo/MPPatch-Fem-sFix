@@ -60,12 +60,16 @@ Scala-based installer. A containerized build environment matching CI:
 ```bash
 git clone --recurse-submodules https://github.com/femtendo/MPPatch-Fem-sFix.git
 cd MPPatch-Fem-sFix
+# Core patch components (Rust):
 docker run --rm --platform linux/amd64 -v "$PWD":/src ubuntu:24.04 bash -c \
-  "bash scripts/ci/install-deps.sh && cd src/patch/mppatch-core && cargo build --release"
+  "apt-get update && apt-get install -y curl build-essential pkg-config git python3 \
+   && curl --proto '=https' -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly-2025-02-01 --profile minimal \
+   && . \$HOME/.cargo/env && cd src/patch/mppatch-core && cargo build --release"
 ```
 
-To build a full release, use `sbt clean dist`. Releases are produced automatically
-by GitHub Actions on every tag.
+To build the full installer, install the deps from `scripts/ci/install-deps.sh`
+and run `sbt clean dist`. Releases are produced automatically by GitHub Actions
+on every tag.
 
 ## Credits
 
