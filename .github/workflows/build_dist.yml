@@ -97,6 +97,14 @@ jobs:
       - run: git config --global --add safe.directory '*'
       - run: git -c submodule.recurse=false fetch --prune --unshallow --tags
 
+      - name: Install sbt
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/sbt/sbt/releases/download/v1.9.7/sbt-1.9.7.tgz" -OutFile "$env:TEMP\sbt.tgz"
+          New-Item -ItemType Directory -Force -Path "C:\sbt" | Out-Null
+          tar -xzf "$env:TEMP\sbt.tgz" -C "C:\sbt"
+          Add-Content $env:GITHUB_PATH "C:\sbt\sbt\bin"
+
       - uses: actions/download-artifact@v4
         with:
           name: mppatch_ci_natives-linux.tar.gz
