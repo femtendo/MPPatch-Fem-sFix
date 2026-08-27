@@ -71,7 +71,7 @@ ThisBuild / assemblyMergeStrategy := {
 }
 
 // Main class for native image
-Compile / mainClass := Some("moe.lymia.mppatch.ui.MPPatchInstaller")
+Compile / mainClass := Some("moe.lymia.mppatch.ui.LauncherWindow")
 
 // Build native binaries
 nativeImageInstalled := true
