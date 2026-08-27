@@ -52,3 +52,5 @@ src/patch/mppatch-core/test_load_chain.c
 # === One-time GraalVM tracing agent scripts (not useful for fork) ===
 scripts/run-agent-*.sh
 scripts/run-agent-*.ps1
+
+./devcontainer/
