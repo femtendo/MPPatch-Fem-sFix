@@ -1,9 +1,3 @@
-Hi, good work on the updated MPPatch.
-- Could you activate issues on your fork?
-- Is the new version compatible with Windows 10?
-- On my computer the installer (exe) fails silently :(
-
-
 ~~~~~~~~~~~~~~~~
    / \__
   (    @\___
