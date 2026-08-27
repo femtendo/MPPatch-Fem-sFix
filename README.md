@@ -1,69 +1,78 @@
+# Fem's MPPatch Launcher
+
+```
 ~~~~~~~~~~~~~~~~
    / \__
   (    @\___
   /         O
  /   (_____/
 /_____/   U
-
-I wanted an easier way to play multiplayer Civ 5 mods.
-This intends to be an all-in-one fork.
-My hope is that this fork encourages more Civ 5 modding!
-
-As far as I could tell, this tool's original repo was deprecated and wasn't touched 
-since 2021. When I tried to spin up some Paper Mario civ leader mods, it simply did 
-not install correctly. This fork intends to allign this project with current Steam 
-release Civ 5, and make mods work in multiplayer effectively and easy.
-Implements pull #98 from the original repo and a few other fixes.
-
-Have fun~
-            ~fem
 ~~~~~~~~~~~~~~~~
+```
 
-This fix required some wonky ubuntu vm file transfers to get working. I will attempt
-to uplaod a shell scrpt in the future to auto-build the required native-bin files
-based on this repo.
+**Fem's MPPatch Launcher** is a patch and launcher for Civilization V that lets you
+use mods in multiplayer without any special preparation — no shared folders, no
+manual file swaps, no "works on my machine."
 
-MPPatch (femsfix 2026)
-=======
+It supports the Steam versions of Civilization V on **Windows** and **Linux**.
+macOS works too, if you run the Windows version of Civ 5 through Proton.
 
-MPPatch is a patch for Civilization V that allows mods to be used in multiplayer without any special preparation.
-It supports the Steam versions of Civilization V on Windows and Linux. macOS is supported, but only if you run
-the Windows version of Civilization V through Proton.
+## Why this fork exists
 
-You can download the [OLD VERSION OF THIS PATCH](https://github.com/Lymia/MPPatch/releases) here.
+The original [MPPatch](https://github.com/Lymia/MPPatch) hadn't been updated since
+2021, and it stopped installing correctly on the current Steam build of Civ 5. This
+fork brings the tool up to date with the latest Steam release, fixes long-standing
+multiplayer bugs, and is being rebuilt into a full mod organizer + launcher so that
+playing modded multiplayer is a two-click affair.
 
-For original usage instructions, [read the original repo user guide](https://github.com/Lymia/MPPatch/wiki/User-Manual).
+## Features
 
-Compiling
----------
+- Multiplayer mod support — enable mods in MP lobbies with everything synced
+- Support for the current Steam version of Civilization V
+- Works with popular Workshop mods (see the wiki for tested compatibility)
+- Clean game exit — no more zombie processes after quitting
+- Open source, MIT licensed
 
-(TODO: These instructions are heavily outdated. create new instructions for building on windows/linux.)
+## Installation
 
-Develop a build-method outside of linux (hard to test a windows game on linux).
-cleanup all build-files like rust from project folder.
-auto mod formatting: some mods on workshop don't put themselves in the right Civ 5 folders. autopatch.
-Create a detailed wiki for easy player set-up and a guide for any poor soul attempting to assist me with updating.
+1. Download the latest installer from the
+   [Releases page](https://github.com/femtendo/MPPatch-Fem-sFix/releases).
+2. Run it and point it at your Civ 5 installation (it usually finds Steam itself).
+3. Launch Civ 5 normally — the multiplayer menu now has mod support built in.
 
+Detailed instructions live in the [wiki](https://github.com/femtendo/MPPatch-Fem-sFix/wiki).
 
----------
-OLD README.txt:
+## Troubleshooting
 
-MPPatch can only be built on Linux systems. The build scripts has only been extensively tested on Arch Linux. You are
-on your own for other distributions.
+If something goes wrong during installation, the installer writes a log to:
 
-On Arch Linux, you will need the following packages: `base-devel jdk8-openjdk sbt mingw-w64-gcc nasm gcc-multilib
-clang llvm`.
+- **Windows:** `%LOCALAPPDATA%\MPPatch\logs\`
+- **Linux:** `~/.local/share/MPPatch/logs/`
 
-The first time you build a release, you must initialize submodules used by MPPatch. To do this, run
-`git submodule update --init`.
+Attach that log when reporting an issue. Bug reports are welcome on the
+[issue tracker](https://github.com/femtendo/MPPatch-Fem-sFix/issues).
 
-You will also need to install [osxcross](https://github.com/tpoechtrager/osxcross). After cloning osxcross into a
-directory and setting up the xcode tarballs, execute `./build.sh`, then add `osxcross/target/bin` to your `PATH`.
+## Compiling from source
 
-To build a release, use `sbt clean dist`. You can also use `sbt run` to test your local version without building a full
-release.
+MPPatch builds the native patch components in Rust and packages them with a
+Scala-based installer. A containerized build environment matching CI:
 
-Contributing
-------------
+```bash
+git clone --recurse-submodules https://github.com/femtendo/MPPatch-Fem-sFix.git
+cd MPPatch-Fem-sFix
+docker run --rm --platform linux/amd64 -v "$PWD":/src ubuntu:24.04 bash -c \
+  "bash scripts/ci/install-deps.sh && cd src/patch/mppatch-core && cargo build --release"
+```
+
+To build a full release, use `sbt clean dist`. Releases are produced automatically
+by GitHub Actions on every tag.
+
+## Credits
+
+- [Lymia Kanokawa](https://github.com/Lymia) — original MPPatch author
+- [VeryHarry7](https://github.com/VeryHarry7) — support for the current Civ 5 Steam build ([upstream PR #98](https://github.com/Lymia/MPPatch/pull/98))
+- Everyone who's reported bugs and tested multiplayer sessions
 
 Pull requests welcome. :)
+
+Have fun~ ~fem
