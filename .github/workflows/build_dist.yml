@@ -20,7 +20,7 @@ jobs:
         with:
           submodules: 'recursive'
       - run: git config --global --add safe.directory '*'
-      - run: git fetch --prune --unshallow --tags
+      - run: git -c submodule.recurse=false fetch --prune --unshallow --tags
 
       # rustup toolchain installed via rust-toolchain.toml
       - run: rustup default nightly
@@ -46,7 +46,7 @@ jobs:
         with:
           submodules: 'recursive'
       - run: git config --global --add safe.directory '*'
-      - run: git fetch --prune --unshallow --tags
+      - run: git -c submodule.recurse=false fetch --prune --unshallow --tags
 
       - uses: actions/download-artifact@v4
         with:
@@ -85,7 +85,7 @@ jobs:
         with:
           submodules: 'recursive'
       - run: git config --global --add safe.directory '*'
-      - run: git fetch --prune --unshallow --tags
+      - run: git -c submodule.recurse=false fetch --prune --unshallow --tags
 
       - uses: actions/download-artifact@v4
         with:
@@ -125,7 +125,7 @@ jobs:
         with:
           submodules: 'recursive'
       - run: git config --global --add safe.directory '*'
-      - run: git fetch --prune --unshallow --tags
+      - run: git -c submodule.recurse=false fetch --prune --unshallow --tags
       - run: sudo apt install libfuse2
 
       - uses: actions/download-artifact@v4
@@ -153,7 +153,7 @@ jobs:
         with:
           submodules: 'recursive'
       - run: git config --global --add safe.directory '*'
-      - run: git fetch --prune --unshallow --tags
+      - run: git -c submodule.recurse=false fetch --prune --unshallow --tags
 
       - uses: actions/download-artifact@v4
         with:
@@ -179,7 +179,7 @@ jobs:
         with:
           submodules: 'recursive'
       - run: git config --global --add safe.directory '*'
-      - run: git fetch --prune --unshallow --tags
+      - run: git -c submodule.recurse=false fetch --prune --unshallow --tags
 
       - uses: actions/download-artifact@v4
         with:
