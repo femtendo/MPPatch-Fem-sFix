@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux/archlinux:multilib-devel
     steps:
-      - run: pacman --noconfirm -Sy sbt jdk-openjdk git mingw-w64 clang llvm nasm rustup python3
+      - run: pacman --noconfirm -Sy sbt jdk-openjdk git mingw-w64 clang llvm lld nasm rustup python3
 
       - uses: actions/checkout@v4
         with:
