@@ -22,8 +22,11 @@ jobs:
       - run: git config --global --add safe.directory '*'
       - run: git -c submodule.recurse=false fetch --prune --unshallow --tags
 
-      # rustup toolchain installed via rust-toolchain.toml
-      - run: rustup default nightly
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install nightly-2025-02-01 --profile minimal
+          rustup default nightly-2025-02-01
+          rustup component add rust-src
       - run: rustup target add i686-pc-windows-gnu i686-unknown-linux-gnu
 
       - run: scripts/ci/build-natives_linux.sh
