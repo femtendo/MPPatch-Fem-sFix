@@ -68,3 +68,4 @@ demos/
 *.checklist.html
 results_*.jsonscripts/checklst.py
 .DS_Store
+scripts/checklst.py
