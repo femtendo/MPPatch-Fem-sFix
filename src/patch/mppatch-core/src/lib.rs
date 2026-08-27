@@ -34,6 +34,7 @@ mod hook_netpatch;
 #[cfg(windows)]
 mod hook_proxy;
 pub mod mod_normalize;
+pub mod mod_fingerprint;
 mod rt_cpplist;
 mod rt_init;
 mod rt_linking;
