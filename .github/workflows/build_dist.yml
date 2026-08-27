@@ -182,7 +182,13 @@ jobs:
           name: mppatch_ci_ni-win32
           path: target/native-image-win32
 
-      - run: choco install nsis
+      - run: choco install nsis --no-progress
+      - name: Add NSIS to PATH
+        shell: pwsh
+        run: |
+          $nsisDir = "C:\Program Files (x86)\NSIS"
+          if (Test-Path $nsisDir) { Add-Content $env:GITHUB_PATH $nsisDir }
+          else { Get-ChildItem "C:\Program Files*" -Filter "NSIS" -Directory -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName | Add-Content $env:GITHUB_PATH }
       - run: pwsh -file scripts/ci/build-installer_win32.ps1
 
       - uses: actions/upload-artifact@v4
