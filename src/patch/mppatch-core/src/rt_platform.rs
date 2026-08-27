@@ -24,7 +24,8 @@
 
 #[cfg(windows)]
 mod platform_impl {
-    use libc::*;
+    // Use std's c_void on the public surface; cast to winapi's at the FFI boundary.
+    use std::ffi::c_void;
     use std::ptr::null_mut;
     use winapi::um::{
         errhandlingapi::GetLastError,
@@ -34,7 +35,7 @@ mod platform_impl {
 
     unsafe fn virtual_protect(start: *mut c_void, len: usize, new: u32) -> ProtectionInfo {
         let mut old = 0;
-        if VirtualProtect(start, len, new, &mut old) == 0 {
+        if VirtualProtect(start as *mut winapi::ctypes::c_void, len, new, &mut old) == 0 {
             panic!("VirtualProtect failed: 0x{:08x}", GetLastError());
         }
         old
@@ -59,7 +60,7 @@ mod platform_impl {
         // do nothing
     }
     pub unsafe fn exec_mem_munmap(ptr: *mut u8, _: usize) {
-        if VirtualFree(ptr as *mut c_void, 0, MEM_RELEASE) == 0 {
+        if VirtualFree(ptr as *mut winapi::ctypes::c_void, 0, MEM_RELEASE) == 0 {
             panic!("VirtualFree failed: 0x{:08x}", GetLastError());
         }
     }
