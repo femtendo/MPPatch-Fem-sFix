@@ -64,7 +64,7 @@ cd MPPatch-Fem-sFix
 docker run --rm --platform linux/amd64 -v "$PWD":/src ubuntu:24.04 bash -c \
   "apt-get update && apt-get install -y curl build-essential pkg-config git python3 \
    && curl --proto '=https' -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly-2025-02-01 --profile minimal \
-   && . \$HOME/.cargo/env && cd src/patch/mppatch-core && cargo build --release"
+   && . \$HOME/.cargo/env && cd /src/src/patch/mppatch-core && cargo build --release"
 ```
 
 To build the full installer, install the deps from `scripts/ci/install-deps.sh`
