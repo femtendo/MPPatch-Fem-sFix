@@ -23,6 +23,7 @@
 package moe.lymia.mppatch.cli
 
 import moe.lymia.mppatch.core.*
+import moe.lymia.mppatch.services.{PatchService, ScanService}
 import moe.lymia.mppatch.util.{InstallerPreflight, Logger, PreflightResult, SimpleLogger, VersionInfo}
 import moe.lymia.mppatch.util.io.ResourceDataSource
 import play.api.libs.json.Json
@@ -30,7 +31,6 @@ import play.api.libs.json.Json
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
-import java.time.Instant
 
 object MPPatchCLI:
   private val exitSuccess     = 0
@@ -60,7 +60,7 @@ object MPPatchCLI:
 
           val platform = createPlatform()
           val pkg      = new PatchPackage(ResourceDataSource("builtin_patch"))
-          val resolvedPath = resolveCivPath(config.civPath, pkg, platform, logger) match
+          val resolvedPath = ScanService.resolveInstall(pkg, platform, config.civPath, logger) match
             case Some(path) => path
             case None =>
               logger.error("No valid Civilization V installation found.")
@@ -128,61 +128,39 @@ object MPPatchCLI:
       platform: Platform,
       logger: Logger
   ): CliResult =
-    val installer = new PatchInstaller(path, installScript, platform, logger)
-
+    val packages = config.packages
     cmd match
       case CliCommand.Check =>
-        val status = installer.checkPatchStatus(config.packages)
+        val status = PatchService.check(path, installScript, platform, logger, packages)
         logger.info(s"Patch status: ${CliResult.statusName(status)}")
         CliResult.successCheck(pathStr, status, s"Patch status: ${CliResult.statusName(status)}")
 
       case CliCommand.Install =>
-        val prevStatus = installer.checkPatchStatus(config.packages)
+        val prevStatus = PatchService.check(path, installScript, platform, logger, packages)
         logger.info(s"Previous status: ${CliResult.statusName(prevStatus)}")
 
-        val currentStatus = prevStatus match
-          case PatchStatus.Installed | PatchStatus.PackageChange | PatchStatus.NeedsUpdate |
-              PatchStatus.FilesCorrupted | PatchStatus.TargetUpdated | PatchStatus.FilesValidated =>
-            installer.safeUpdate(config.packages)
-            installer.checkPatchStatus(config.packages)
-
-          case PatchStatus.NotInstalled(_) =>
-            installer.safeUpdate(config.packages)
-            installer.checkPatchStatus(config.packages)
-
-          case PatchStatus.CanUninstall | PatchStatus.UnknownUpdate =>
-            logger.info("Uninstalling old version first...")
-            installer.safeUninstall()
-            installer.safeUpdate(config.packages)
-            installer.checkPatchStatus(config.packages)
-
-          case other =>
+        PatchService.install(path, installScript, platform, logger, packages) match
+          case PatchService.InstallOutcome.Done(currentStatus) =>
+            val logFiles = scanLogFiles(path)
+            logger.info(s"Install complete. Status: ${CliResult.statusName(currentStatus)}")
+            CliResult.success("install", pathStr, currentStatus, "Patch installed successfully.", logFiles)
+          case PatchService.InstallOutcome.UnexpectedState(other) =>
             outputError("install", pathStr, s"Cannot safely install: unexpected state ${CliResult.statusName(other)}")
-            return CliResult.error("install", pathStr,
+            CliResult.error("install", pathStr,
               s"Cannot safely install: unexpected state ${CliResult.statusName(other)}",
               Some(other))
 
-        val logFiles = scanLogFiles(path)
-        logger.info(s"Install complete. Status: ${CliResult.statusName(currentStatus)}")
-        CliResult.success("install", pathStr, currentStatus, "Patch installed successfully.", logFiles)
-
       case CliCommand.Uninstall =>
-        val prevStatus = installer.checkPatchStatus(config.packages)
+        val prevStatus = PatchService.check(path, installScript, platform, logger, packages)
         logger.info(s"Previous status: ${CliResult.statusName(prevStatus)}")
 
-        prevStatus match
-          case PatchStatus.NotInstalled(_) =>
-            CliResult.success("uninstall", pathStr, prevStatus, "Patch is not installed.")
-
-          case PatchStatus.Installed | PatchStatus.PackageChange | PatchStatus.NeedsUpdate |
-              PatchStatus.CanUninstall | PatchStatus.UnknownUpdate | PatchStatus.FilesCorrupted |
-              PatchStatus.TargetUpdated | PatchStatus.FilesValidated =>
-            installer.safeUninstall()
-            val newStatus = installer.checkPatchStatus(config.packages)
+        PatchService.uninstall(path, installScript, platform, logger, packages) match
+          case PatchService.UninstallOutcome.NotInstalled(status) =>
+            CliResult.success("uninstall", pathStr, status, "Patch is not installed.")
+          case PatchService.UninstallOutcome.Done(newStatus) =>
             logger.info(s"Uninstall complete. Status: ${CliResult.statusName(newStatus)}")
             CliResult.success("uninstall", pathStr, newStatus, "Patch uninstalled successfully.")
-
-          case other =>
+          case PatchService.UninstallOutcome.UnexpectedState(other) =>
             outputError("uninstall", pathStr, s"Cannot safely uninstall: unexpected state ${CliResult.statusName(other)}")
             CliResult.error("uninstall", pathStr,
               s"Cannot safely uninstall: unexpected state ${CliResult.statusName(other)}",
@@ -198,31 +176,6 @@ object MPPatchCLI:
       case _ =>
         System.err.println("Unknown platform.")
         sys.exit(1)
-
-  private def resolveCivPath(
-      explicitPath: Option[Path],
-      pkg: PatchPackage,
-      platform: Platform,
-      logger: Logger
-  ): Option[Path] =
-    explicitPath match
-      case Some(path) =>
-        if isValidCivInstall(path, pkg) then Some(path)
-        else
-          logger.warn(s"Explicit path is not a valid Civ5 installation: $path")
-          None
-      case None =>
-        logger.info("Auto-detecting Civ5 installation...")
-        val validPaths = for
-          path <- platform.defaultSystemPaths
-          if isValidCivInstall(path, pkg)
-        yield
-          logger.info(s"  Found: $path")
-          path
-        validPaths.headOption
-
-  private def isValidCivInstall(root: Path, pkg: PatchPackage): Boolean =
-    Files.exists(root) && Files.isDirectory(root) && pkg.detectInstallationPlatform(root).isDefined
 
   private def scanLogFiles(civPath: Path): Map[String, Option[String]] =
     val files = Seq(
