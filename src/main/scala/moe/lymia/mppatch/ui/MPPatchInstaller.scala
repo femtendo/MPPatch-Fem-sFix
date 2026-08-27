@@ -26,7 +26,7 @@ import com.formdev.flatlaf.fonts.roboto.FlatRobotoFont
 import com.formdev.flatlaf.{FlatIntelliJLaf, FlatLaf}
 import moe.lymia.mppatch.core.{PatchPackage, Platform, PlatformType}
 import moe.lymia.mppatch.util.io.ResourceDataSource
-import moe.lymia.mppatch.util.{Logger, SimpleLogger, VersionInfo}
+import moe.lymia.mppatch.util.{InstallerPreflight, Logger, PreflightResult, SimpleLogger, VersionInfo}
 
 import java.io.{File, FileOutputStream, OutputStreamWriter, PrintWriter}
 import java.nio.charset.StandardCharsets
@@ -39,6 +39,8 @@ object MPPatchInstaller extends LaunchFrameError {
   private val nsisMarker = "018c6bba-54e0-7cf2-b16a-7b6abb9215e0"
   private var sbtMarker = "018c7e5e-473e-7273-b818-e677c7fe1439"
   private val dateFormat = DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.US)
+
+  private var preflightResults: Seq[PreflightResult] = Seq.empty
 
   private lazy val isSbt = System.getenv("MPPATCH_SBT_LAUNCH") == sbtMarker
   private lazy val isAppImage =
@@ -134,6 +136,18 @@ object MPPatchInstaller extends LaunchFrameError {
       log.info(f"Base directory: ${baseDirectory}")
       log.logRaw("")
 
+      // run preflight checks (logged; surfaced in the failure dialog if any throw)
+      val civPath     = defaultCivilizationPath
+      val civCheckFor = civPath
+        .flatMap(d => new PatchPackage(defaultPackageSource).detectInstallationPlatform(d))
+        .map(_.script.checkFor)
+        .getOrElse(Set.empty)
+        .toSeq
+      preflightResults = InstallerPreflight.run(civPath, civCheckFor)
+      for (r <- preflightResults)
+        if (r.ok) log.info(f"[PASS] ${r.name}: ${r.detail}")
+        else log.warn(f"[FAIL] ${r.name}: ${r.detail}")
+
       // install look-and-feel
       log.info("[DIAG] Installing FlatLaf look-and-feel...")
       FlatRobotoFont.install()
@@ -170,12 +184,24 @@ object MPPatchInstaller extends LaunchFrameError {
       }
       log.info("[DIAG] main() completed normally")
     } catch {
-      case _: InstallerException => // ignored
+      case _: InstallerException => // deliberately raised; message already shown by FrameError
       case e: Throwable =>
         log.error(s"[DIAG] Uncaught throwable in main: ${e.getClass.getName}: ${e.getMessage}")
+        // Never fail silently: persist a timestamped fatal log and surface the error.
+        val logPath = InstallerPreflight.writeFatalLog(e, VersionInfo.versionString, preflightResults)
+        log.error(s"[DIAG] Fatal log written to: $logPath")
         try {
           log.logRaw("[DIAG] Stack trace:")
           e.getStackTrace.foreach(ste => log.logRaw(s"  at ${ste.getClassName}.${ste.getMethodName}(${ste.getFileName}:${ste.getLineNumber})"))
+          // Surface the error + preflight results in a UI dialog on failure.
+          if (!java.awt.GraphicsEnvironment.isHeadless) {
+            val msg =
+              "MPPatch failed to start.\n\n" +
+                Option(e.getMessage).getOrElse(e.getClass.getName) + "\n\n" +
+                "A fatal log has been written to:\n" + logPath + "\n\n" +
+                "Preflight results:\n" + InstallerPreflight.preflightText(preflightResults)
+            JOptionPane.showMessageDialog(null, msg, "MPPatch Installer - Fatal Error", JOptionPane.ERROR_MESSAGE)
+          }
           // Also print to stderr as fallback
           System.err.println(s"[DIAG FATAL] ${e.getClass.getName}: ${e.getMessage}")
           e.printStackTrace(System.err)

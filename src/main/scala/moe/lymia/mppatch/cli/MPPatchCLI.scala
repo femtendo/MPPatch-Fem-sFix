@@ -23,7 +23,7 @@
 package moe.lymia.mppatch.cli
 
 import moe.lymia.mppatch.core.*
-import moe.lymia.mppatch.util.{Logger, SimpleLogger, VersionInfo}
+import moe.lymia.mppatch.util.{InstallerPreflight, Logger, PreflightResult, SimpleLogger, VersionInfo}
 import moe.lymia.mppatch.util.io.ResourceDataSource
 import play.api.libs.json.Json
 
@@ -39,48 +39,85 @@ object MPPatchCLI:
   private val exitPathInvalid = 3
 
   def main(args: Array[String]): Unit =
-    val result = CliConfig.parse(args) match
-      case Left(usage) =>
-        System.err.println(usage)
-        sys.exit(exitBadArgs)
+    var preflightResults: Seq[PreflightResult] = Seq.empty
+    try {
+      val result = CliConfig.parse(args) match
+        case Left(usage) =>
+          System.err.println(usage)
+          sys.exit(exitBadArgs)
 
-      case Right(config) =>
-        val stderrLogger = new SimpleLogger(
-          new OutputStreamWriter(System.err, StandardCharsets.UTF_8)
-        )
-        val logger = stderrLogger
+        case Right(config) =>
+          val stderrLogger = new SimpleLogger(
+            new OutputStreamWriter(System.err, StandardCharsets.UTF_8)
+          )
+          val stdoutLogger = new SimpleLogger(
+            new OutputStreamWriter(System.out, StandardCharsets.UTF_8)
+          )
+          val logger = stderrLogger
 
-        logger.info(s"MPPatch CLI v${VersionInfo.versionString}")
-        logger.info(s"Command: ${config.command}")
+          logger.info(s"MPPatch CLI v${VersionInfo.versionString}")
+          logger.info(s"Command: ${config.command}")
 
-        val platform = createPlatform()
-        val pkg      = new PatchPackage(ResourceDataSource("builtin_patch"))
-        val resolvedPath = resolveCivPath(config.civPath, pkg, platform, logger) match
-          case Some(path) => path
-          case None =>
-            logger.error("No valid Civilization V installation found.")
-            outputError(
-              "check",
-              config.civPath.fold("(auto-detect)")(_.toString),
-              "No valid Civilization V installation found."
+          val platform = createPlatform()
+          val pkg      = new PatchPackage(ResourceDataSource("builtin_patch"))
+          val resolvedPath = resolveCivPath(config.civPath, pkg, platform, logger) match
+            case Some(path) => path
+            case None =>
+              logger.error("No valid Civilization V installation found.")
+              outputError(
+                "check",
+                config.civPath.fold("(auto-detect)")(_.toString),
+                "No valid Civilization V installation found."
+              )
+              sys.exit(exitPathInvalid)
+
+          val pathStr = resolvedPath.toString
+          logger.info(s"Civ5 path: $pathStr")
+
+          val installScript = pkg.detectInstallationPlatform(resolvedPath) match
+            case Some(script) => script
+            case None =>
+              logger.error("Could not detect installation platform at path.")
+              outputError("check", pathStr, "Could not detect installation platform.")
+              sys.exit(exitPathInvalid)
+
+          // Run preflight checks -- always collected so they land in any failure log.
+          preflightResults =
+            InstallerPreflight.run(Some(resolvedPath), installScript.script.checkFor.toSeq)
+          for (r <- preflightResults)
+            if (r.ok) logger.info(s"[PASS] ${r.name}: ${r.detail}")
+            else logger.warn(s"[FAIL] ${r.name}: ${r.detail}")
+
+          // --verbose prints the same diagnostic info to stdout.
+          if (config.verbose) {
+            stdoutLogger.info("MPPatch CLI verbose diagnostics")
+            stdoutLogger.info("Version: " + VersionInfo.versionString)
+            stdoutLogger.info("Platform: " + InstallerPreflight.platformLabel)
+            stdoutLogger.info(
+              s"OS: ${System.getProperty("os.name")} ${System.getProperty("os.version")} " +
+                s"(${System.getProperty("os.arch")})"
             )
-            sys.exit(exitPathInvalid)
+            stdoutLogger.info(s"Command: ${config.command}")
+            stdoutLogger.info(s"Civ5 path: $pathStr")
+            stdoutLogger.info("Installer log directory: " + InstallerPreflight.logDirectory.toString)
+            stdoutLogger.info("Preflight results:")
+            InstallerPreflight.preflightText(preflightResults).split("\n").foreach(l => stdoutLogger.info(l))
+          }
 
-        val pathStr = resolvedPath.toString
-        logger.info(s"Civ5 path: $pathStr")
+          executeCommand(config.command, config, resolvedPath, pathStr, installScript, platform, logger)
 
-        val installScript = pkg.detectInstallationPlatform(resolvedPath) match
-          case Some(script) => script
-          case None =>
-            logger.error("Could not detect installation platform at path.")
-            outputError("check", pathStr, "Could not detect installation platform.")
-            sys.exit(exitPathInvalid)
-
-        executeCommand(config.command, config, resolvedPath, pathStr, installScript, platform, logger)
-
-    printJson(result)
-    if result.success then sys.exit(exitSuccess)
-    else sys.exit(exitError)
+      printJson(result)
+      if result.success then sys.exit(exitSuccess)
+      else sys.exit(exitError)
+    } catch {
+      case t: Throwable =>
+        // Never fail silently: persist a timestamped fatal log and surface the error.
+        val logPath = InstallerPreflight.writeFatalLog(t, VersionInfo.versionString, preflightResults)
+        System.err.println(s"MPPatch CLI FAILURE: ${t.getClass.getName}: ${t.getMessage}")
+        System.err.println(s"Fatal log written to: $logPath")
+        t.printStackTrace(System.err)
+        sys.exit(exitError)
+    }
 
   private def executeCommand(
       cmd: CliCommand,
