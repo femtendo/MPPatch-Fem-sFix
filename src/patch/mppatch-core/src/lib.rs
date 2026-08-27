@@ -20,6 +20,8 @@
  * THE SOFTWARE.
  */
 
+#![cfg_attr(windows, feature(naked_functions))]
+
 use crate::rt_init::MppatchFeature;
 use ctor::ctor;
 use std::sync::atomic::{AtomicBool, Ordering};

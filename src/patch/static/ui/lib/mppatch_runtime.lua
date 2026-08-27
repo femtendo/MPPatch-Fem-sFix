@@ -59,11 +59,21 @@ end
 createTable()
 _mpPatch.patch = patch
 
--- Version validation is done by the binary layer at init time
--- (find_info in versions.rs already matched the SHA-256)
-if not patch.version.valid then
-    loadFailed("Binary version validation failed.", "binaryVersionInvalid")
-    return
+-- Check the version information to make sure nothing has gone wrong
+-- Note: We now get version info directly from the binary layer (patch.version)
+-- instead of trying to include mppatch_version.lua, which fails because
+-- Civ5's include path resolution doesn't work for hook-injected files.
+do
+    if not patch.version or not patch.version.buildId then
+        loadFailed("Could not load version information from binary layer.")
+        return
+    end
+    -- Store version info in _mpPatch for compatibility with other code
+    _mpPatch.version = {
+        loaded = true,
+        buildId = {}
+    }
+    _mpPatch.version.buildId[patch.version.platform] = patch.version.buildId
 end
 
 -- Load the actual _mpPatch runtime contents

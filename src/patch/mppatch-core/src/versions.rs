@@ -93,6 +93,18 @@ pub fn find_info(sha256: &str) -> Result<VersionInfo> {
             }),
             binary_base: 0x00400000,
         },
+        "d9231d313fb24fe88c6020d250a44b6ad754b78922325473a03a6e6c002911c4" => VersionInfo {
+            name: "Civilization V / 1.0.3.279 / Win32 + Steam (Build 4390913)",
+            platform: Platform::Win32,
+            sym_lGetMemoryUsage: SymbolInfo::DllProxy(ProxySource::CvGameDatabase, "?lGetMemoryUsage@Lua@Scripting@Database@@SAHPAUlua_State@@@Z"),
+            sym_SetActiveDLCAndMods: SymbolInfo::Win32Offsets(SymWin32Offsets {
+                name: "SetActiveDLCAndMods",
+                dx9: (0x006CD160, 6),
+                dx11: (0x006B8E50, 6),
+                tablet: (0x0065DC10, 6),
+            }),
+            binary_base: 0x00400000,
+        },
         "cc06b647821ec5e7cca3c397f6b0d4726f0106cdd67bcf074d494bea2607a8ca" => VersionInfo {
             name: "Civilization V / 1.0.3.279 / Linux + Steam",
             platform: Platform::Linux,
