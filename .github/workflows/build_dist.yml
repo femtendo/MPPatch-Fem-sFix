@@ -56,6 +56,16 @@ jobs:
 
       - run: scripts/ci/build-ni_linux.sh
 
+      - name: Audit baseline opcodes (no AVX/BMI/FMA)
+        run: |
+          sudo apt-get install -y binutils
+          binaries=(target/native-image-linux/mppatch-installer*)
+          for b in "${binaries[@]}"; do
+            [ -f "$b" ] || continue
+            echo "Auditing: $b"
+            bash scripts/ci/audit-baseline.sh "$b" || exit 1
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: mppatch_ci_ni-linux
@@ -84,6 +94,16 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@v1
       - run: pwsh -file scripts/ci/build-ni_win32.ps1
+
+      - name: Audit baseline opcodes (no AVX/BMI/FMA)
+        shell: bash
+        run: |
+          binaries=(target/native-image-win32/mppatch-installer.exe)
+          for b in "${binaries[@]}"; do
+            [ -f "$b" ] || continue
+            echo "Auditing: $b"
+            bash scripts/ci/audit-baseline.sh "$b" || exit 1
+          done
 
       - uses: actions/upload-artifact@v4
         with:

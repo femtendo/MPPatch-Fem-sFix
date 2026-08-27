@@ -82,6 +82,11 @@ nativeImageOutput := {
 nativeImageGraalHome := (target.value / "deps" / f"graalvm-${PlatformType.currentPlatform.name}").toPath
 
 nativeImageOptions += "--no-fallback"
+// GraalVM 23.1.1 defaults to x86-64-v3, which requires AVX2/BMI1/BMI2/FMA and
+// crashes on pre-AVX2 CPUs. Pin 'compatibility' (plain x86-64 = SSE2 baseline)
+// so the installer runs on any x86-64 machine.
+nativeImageOptions += "-march=compatibility"
+nativeImageOptions += "-H:-CheckToolchain"
 nativeImageOptions += "-Djava.awt.headless=false"
 nativeImageOptions += "--strict-image-heap"
 nativeImageOptions += s"-H:ConfigurationFileDirectories=${baseDirectory.value / "scripts" / "native-image-config" / PlatformType.currentPlatform.name}"
