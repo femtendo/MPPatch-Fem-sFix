@@ -54,3 +54,17 @@ scripts/run-agent-*.sh
 scripts/run-agent-*.ps1
 
 ./devcontainer/
+
+# === Crystal Symphony dev-workspace artifacts ===
+devlog.md
+CURRENT_STATE.md
+DESIGN.md
+.subagents/
+subagents/
+logs/
+demos/
+.hermes/
+.gate-evidence/
+*.checklist.html
+results_*.jsonscripts/checklst.py
+.DS_Store
