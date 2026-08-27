@@ -58,6 +58,10 @@ jobs:
       - run: mv target/mppatch_ci_natives-linux/* target/
       - run: rm -rf target/mppatch_ci_natives-linux
 
+      - name: Install cross toolchain deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-multilib g++-multilib mingw-w64
       - name: Install sbt
         run: |
           curl -fLs https://github.com/sbt/sbt/releases/download/v1.9.7/sbt-1.9.7.tgz -o /tmp/sbt.tgz
