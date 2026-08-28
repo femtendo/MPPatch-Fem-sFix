@@ -13,7 +13,9 @@
     "methods": [
       {
         "name": "getBoolean",
-        "parameterTypes": ["java.lang.String"]
+        "parameterTypes": [
+          "java.lang.String"
+        ]
       }
     ]
   },
@@ -22,7 +24,9 @@
     "methods": [
       {
         "name": "toLowerCase",
-        "parameterTypes": ["java.util.Locale"]
+        "parameterTypes": [
+          "java.util.Locale"
+        ]
       }
     ]
   },
@@ -31,7 +35,9 @@
     "methods": [
       {
         "name": "getProperty",
-        "parameterTypes": ["java.lang.String"]
+        "parameterTypes": [
+          "java.lang.String"
+        ]
       }
     ]
   },
@@ -53,7 +59,10 @@
       },
       {
         "name": "put",
-        "parameterTypes": ["java.lang.Object", "java.lang.Object"]
+        "parameterTypes": [
+          "java.lang.Object",
+          "java.lang.Object"
+        ]
       }
     ]
   },
@@ -62,11 +71,15 @@
     "methods": [
       {
         "name": "<init>",
-        "parameterTypes": ["int"]
+        "parameterTypes": [
+          "int"
+        ]
       },
       {
         "name": "add",
-        "parameterTypes": ["java.lang.Object"]
+        "parameterTypes": [
+          "java.lang.Object"
+        ]
       }
     ]
   },
@@ -87,7 +100,9 @@
     "methods": [
       {
         "name": "<init>",
-        "parameterTypes": ["java.lang.String"]
+        "parameterTypes": [
+          "java.lang.String"
+        ]
       }
     ]
   },
@@ -96,7 +111,9 @@
     "methods": [
       {
         "name": "<init>",
-        "parameterTypes": ["scala.collection.immutable.Map"]
+        "parameterTypes": [
+          "scala.collection.immutable.Map"
+        ]
       }
     ]
   },
@@ -105,7 +122,9 @@
     "methods": [
       {
         "name": "<init>",
-        "parameterTypes": ["scala.collection.immutable.Seq"]
+        "parameterTypes": [
+          "scala.collection.immutable.Seq"
+        ]
       }
     ]
   },
@@ -114,7 +133,9 @@
     "methods": [
       {
         "name": "<init>",
-        "parameterTypes": ["java.math.BigDecimal"]
+        "parameterTypes": [
+          "java.math.BigDecimal"
+        ]
       }
     ]
   },
@@ -123,11 +144,37 @@
     "methods": [
       {
         "name": "<init>",
-        "parameterTypes": ["boolean"]
+        "parameterTypes": [
+          "boolean"
+        ]
       }
     ]
   },
   {
     "name": "play.api.libs.json.JsNull$"
+  },
+  {
+    "name": "scala.xml.PrettyPrinter",
+    "fields": [
+      {
+        "name": "0bitmap$1"
+      }
+    ]
+  },
+  {
+    "name": "scala.xml.XML$",
+    "fields": [
+      {
+        "name": "0bitmap$2"
+      }
+    ]
+  },
+  {
+    "name": "scala.xml.parsing.FactoryAdapter",
+    "fields": [
+      {
+        "name": "0bitmap$1"
+      }
+    ]
   }
 ]
