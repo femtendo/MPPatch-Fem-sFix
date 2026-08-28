@@ -59,3 +59,19 @@ target/deps/rcedit.exe "target/native-image-win32/mppatch-installer.exe" `
     --set-icon "scripts/res/mppatch-installer.ico" `
     --application-manifest "scripts/res/win32-manifest.xml"
 editbin /SUBSYSTEM:WINDOWS "target/native-image-win32/mppatch-installer.exe"
+
+# Build the headless MPPatchCLI native image (mppatch-cli.exe) into the SAME
+# payload dir so installer.nsh's "File ..\..\target\native-image-win32\*" picks
+# both up. It drives the exact same install code path as the GUI.
+echo "Building native-image CLI"
+sbt nativeImageCli
+target/deps/rcedit.exe "target/native-image-win32/mppatch-cli.exe" `
+    --set-version-string "FileDescription" "MPPatch CLI - Headless Installer" `
+    --set-file-version "$FILE_VERSION" `
+    --set-version-string "ProductName" "MPPatch" `
+    --set-product-version "$VERSION" `
+    --set-version-string "LegalCopyright" "(C) Lymia Kanokawa; available under the MIT License" `
+    --set-version-string "OriginalFilename" "mppatch-cli.exe" `
+    --set-version-string "Comments" "Headless CLI installer used for silent/unattended installs."
+# Console subsystem so --help / --json output and exit codes are usable.
+editbin /SUBSYSTEM:CONSOLE "target/native-image-win32/mppatch-cli.exe"

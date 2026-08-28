@@ -91,6 +91,54 @@ nativeImageOptions += "-Djava.awt.headless=false"
 nativeImageOptions += "--strict-image-heap"
 nativeImageOptions += s"-H:ConfigurationFileDirectories=${baseDirectory.value / "scripts" / "native-image-config" / PlatformType.currentPlatform.name}"
 
+// ---------------------------------------------------------------------------
+// Headless MPPatchCLI native image.
+//
+// Produces `mppatch-cli.exe` (main = MPPatchCLI) into the SAME payload dir as
+// the GUI exe (target/native-image-win32/) so that scripts/res/installer.nsh's
+// "File ..\..\target\native-image-win32\*" picks both up. The CLI drives the
+// exact same preflight -> install code path as the GUI (PatchService /
+// InstallerPreflight shared by both mains) -- see MPPatchCLI.scala.
+//
+// We re-scope the plugin's nativeImage task (mirroring how sbt-native-image's
+// own nativeImageRunAgent re-scopes) so the single-project build can emit a
+// second, headless image without disturbing the GUI one.
+// ---------------------------------------------------------------------------
+lazy val nativeImageCli = taskKey[File]("Build the headless MPPatchCLI native image (mppatch-cli.exe)")
+nativeImageCli := {
+  val log = streams.value.log
+  val outDir = target.in(Compile).value / s"native-image-${PlatformType.currentPlatform.name}"
+  IO.createDirectory(outDir)
+  val cliCfgDir = baseDirectory.value / "scripts" / "native-image-config" / "cli"
+  val overrides: Seq[Setting[?]] = Seq(
+    mainClass.in(NativeImage) := Some("moe.lymia.mppatch.cli.MPPatchCLI"),
+    nativeImageOutput         := outDir / "mppatch-cli.exe",
+    // Headless-safe: no AWT/FlatLaf init in the CLI entry path (see
+    // MPPatchCLI.scala and Steam.scala's lazy Desktop).
+    nativeImageOptions := Seq(
+      "--no-fallback",
+      "-march=compatibility",
+      "-H:-CheckToolchain",
+      "-Djava.awt.headless=true",
+      "--strict-image-heap",
+      s"-H:ConfigurationFileDirectories=$cliCfgDir"
+    )
+  )
+  log.info("Building headless MPPatchCLI native image into " + outDir)
+  val state0 = state.value
+  val newState = Project.extract(state0).append(overrides, state0)
+  Project.runTask(nativeImage, newState) match {
+    case Some((_, Value(file))) =>
+      log.info(s"MPPatchCLI native image ready: $file")
+      file
+    case Some((_, Inc(inc))) =>
+      throw new MessageOnlyException(s"nativeImageCli failed: $inc")
+    case None =>
+      throw new MessageOnlyException("nativeImageCli failed: nativeImage task not found in project")
+  }
+}
+
+
 Global / excludeLintKeys += nativeImageJvm
 Global / excludeLintKeys += nativeImageJvmIndex
 Global / excludeLintKeys += nativeImageVersion

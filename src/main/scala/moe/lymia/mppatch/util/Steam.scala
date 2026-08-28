@@ -43,7 +43,12 @@ object Steam {
       ) yield Paths.get(m.head)).toSeq :+ p
     else Seq(p)
 
-  private val desktop                    = Desktop.getDesktop
+  // Lazily initialize Desktop so that merely touching this object (e.g. the
+  // platform Steam-library-path detection used by the headless CLI) does not
+  // call into AWT. Only GUI flows that actually launch/validate a game
+  // (loadURI) initialize it. This keeps MPPatchCLI safe under
+  // -Djava.awt.headless=true.
+  private lazy val desktop                = Desktop.getDesktop
   private def loadURI(uri: String): Unit = desktop.browse(new URI(uri))
 
   def launchGame(gameId: Int): Unit        = loadURI("steam://run/" + gameId)

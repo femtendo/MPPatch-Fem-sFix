@@ -42,8 +42,13 @@ object MPPatchCLI:
     var preflightResults: Seq[PreflightResult] = Seq.empty
     try {
       val result = CliConfig.parse(args) match
-        case Left(usage) =>
-          System.err.println(usage)
+        case Left(CliConfig.ParseFailure.Help) =>
+          // Explicit --help request: print usage and exit 0 (not an error).
+          System.out.println(CliConfig.usageText)
+          sys.exit(exitSuccess)
+
+        case Left(CliConfig.ParseFailure.UsageError(message)) =>
+          System.err.println(message)
           sys.exit(exitBadArgs)
 
         case Right(config) =>

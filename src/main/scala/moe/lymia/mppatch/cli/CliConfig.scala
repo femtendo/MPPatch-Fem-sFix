@@ -39,17 +39,29 @@ case class CliConfig(
 object CliConfig:
   private val defaultPackages = Set("logging", "luajit", "multiplayer")
 
-  def parse(args: Array[String]): Either[String, CliConfig] =
-    if args.isEmpty then Left(usageText)
+  /** Distinguishes an explicit --help request (exit 0) from a genuine
+    * argument-parse error (exit 2). */
+  enum ParseFailure:
+    case Help
+    case UsageError(message: String)
+
+  def parse(args: Array[String]): Either[ParseFailure, CliConfig] =
+    if args.isEmpty then Left(ParseFailure.UsageError(usageText))
     else parseArgs(args.toList, CliConfig(command = CliCommand.Check))
 
-  private def parseArgs(remaining: List[String], config: CliConfig): Either[String, CliConfig] =
+  private def parseArgs(remaining: List[String], config: CliConfig): Either[ParseFailure, CliConfig] =
     remaining match
       case Nil => Right(config)
-      case "--help" :: _ => Left(usageText)
+      case "--help" :: _ => Left(ParseFailure.Help)
       case "--verbose" :: tail =>
         parseArgs(tail, config.copy(verbose = true))
       case "--json" :: tail =>
+        parseArgs(tail, config)
+      // GUI-compat flags accepted as no-ops so the headless exe is flag-compatible
+      // with the interactive launcher/installer (they do not apply headlessly).
+      case "--new" :: tail =>
+        parseArgs(tail, config)
+      case "--legacy-installer" :: tail =>
         parseArgs(tail, config)
       case "--path" :: path :: tail =>
         parseArgs(tail, config.copy(civPath = Some(Paths.get(path))))
@@ -57,15 +69,15 @@ object CliConfig:
         val pkgs = pkgList.split(",").map(_.trim).filter(_.nonEmpty).toSet
         parseArgs(tail, config.copy(packages = pkgs))
       case "--path" :: _ =>
-        Left("Missing value for --path")
+        Left(ParseFailure.UsageError("Missing value for --path"))
       case "--packages" :: _ =>
-        Left("Missing value for --packages")
+        Left(ParseFailure.UsageError("Missing value for --packages"))
       case arg :: tail if !arg.startsWith("--") =>
         parseCommand(arg) match
           case Some(cmd) => parseArgs(tail, config.copy(command = cmd))
-          case None      => Left(s"Unknown command: $arg\n\n$usageText")
+          case None      => Left(ParseFailure.UsageError(s"Unknown command: $arg\n\n$usageText"))
       case unknown :: _ =>
-        Left(s"Unknown option: $unknown\n\n$usageText")
+        Left(ParseFailure.UsageError(s"Unknown option: $unknown\n\n$usageText"))
 
   private def parseCommand(s: String): Option[CliCommand] = s.toLowerCase match
     case "install"   => Some(CliCommand.Install)
