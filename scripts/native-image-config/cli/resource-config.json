@@ -9,6 +9,9 @@
       },
       {
         "pattern": "moe/lymia/mppatch/.*"
+      },
+      {
+        "pattern": "\\Qmoe/lymia/mppatch/version.properties\\E"
       }
     ]
   }

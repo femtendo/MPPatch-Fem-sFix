@@ -117,7 +117,10 @@ object MPPatchCLI:
     } catch {
       case t: Throwable =>
         // Never fail silently: persist a timestamped fatal log and surface the error.
-        val logPath = InstallerPreflight.writeFatalLog(t, VersionInfo.versionString, preflightResults)
+        // Avoid touching VersionInfo here: if its static init is what failed,
+        // re-referencing it masks the root cause with NoClassDefFoundError.
+        val versionSafe = try VersionInfo.versionString catch { case _: Throwable => "<version-unavailable>" }
+        val logPath = InstallerPreflight.writeFatalLog(t, versionSafe, preflightResults)
         System.err.println(s"MPPatch CLI FAILURE: ${t.getClass.getName}: ${t.getMessage}")
         System.err.println(s"Fatal log written to: $logPath")
         t.printStackTrace(System.err)
