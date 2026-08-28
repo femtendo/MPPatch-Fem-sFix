@@ -65,6 +65,11 @@ editbin /SUBSYSTEM:WINDOWS "target/native-image-win32/mppatch-installer.exe"
 # both up. It drives the exact same install code path as the GUI.
 echo "Building native-image CLI"
 sbt nativeImageCli
+# sbt-native-image appends .exe to the configured output name on Windows targets
+$cliPath = "target/native-image-win32/mppatch-cli.exe"
+if ((Test-Path "$cliPath.exe") -and -not (Test-Path $cliPath)) {
+  Move-Item "$cliPath.exe" $cliPath
+}
 target/deps/rcedit.exe "target/native-image-win32/mppatch-cli.exe" `
     --set-version-string "FileDescription" "MPPatch CLI - Headless Installer" `
     --set-file-version "$FILE_VERSION" `
